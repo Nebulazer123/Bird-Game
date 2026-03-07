@@ -1,0 +1,7 @@
+node_modules/
+dist/
+test-results/
+output/
+.codex-vite.pid
+playwright-report/
+.DS_Store

@@ -1,0 +1,27 @@
+{
+  "name": "featherwind-valley",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.30.3",
+  "scripts": {
+    "dev": "$p=(Get-Location).Path; $p=$p -replace '^Microsoft\\.PowerShell\\.Core\\\\FileSystem::',''; if ($p.StartsWith('\\\\?\\\\')) { $p=$p.Substring(4) }; Set-Location -LiteralPath $p; vite",
+    "start": "$p=(Get-Location).Path; $p=$p -replace '^Microsoft\\.PowerShell\\.Core\\\\FileSystem::',''; if ($p.StartsWith('\\\\?\\\\')) { $p=$p.Substring(4) }; Set-Location -LiteralPath $p; vite --host 127.0.0.1 --open",
+    "build": "vite build",
+    "preview": "$p=(Get-Location).Path; $p=$p -replace '^Microsoft\\.PowerShell\\.Core\\\\FileSystem::',''; if ($p.StartsWith('\\\\?\\\\')) { $p=$p.Substring(4) }; Set-Location -LiteralPath $p; vite preview --host 127.0.0.1 --port 4187",
+    "test": "$p=(Get-Location).Path; $p=$p -replace '^Microsoft\\.PowerShell\\.Core\\\\FileSystem::',''; if ($p.StartsWith('\\\\?\\\\')) { $p=$p.Substring(4) }; Set-Location -LiteralPath $p; playwright test",
+    "artifact:debug-menu": "$p=(Get-Location).Path; $p=$p -replace '^Microsoft\\.PowerShell\\.Core\\\\FileSystem::',''; if ($p.StartsWith('\\\\?\\\\')) { $p=$p.Substring(4) }; Set-Location -LiteralPath $p; node tests/capture-debug-menu-artifact.js",
+    "artifact:graphics-showcase": "$p=(Get-Location).Path; $p=$p -replace '^Microsoft\\.PowerShell\\.Core\\\\FileSystem::',''; if ($p.StartsWith('\\\\?\\\\')) { $p=$p.Substring(4) }; Set-Location -LiteralPath $p; node tests/capture-graphics-showcase-artifact.js",
+    "artifact:readability": "$p=(Get-Location).Path; $p=$p -replace '^Microsoft\\.PowerShell\\.Core\\\\FileSystem::',''; if ($p.StartsWith('\\\\?\\\\')) { $p=$p.Substring(4) }; Set-Location -LiteralPath $p; node tests/capture-readability-artifact.js",
+    "assets:fetch": "powershell -ExecutionPolicy Bypass -File ./scripts/fetch_assets.ps1"
+  },
+  "dependencies": {
+    "howler": "^2.2.4",
+    "three": "^0.180.0",
+    "tweakpane": "^4.0.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "vite": "^7.1.3"
+  }
+}
