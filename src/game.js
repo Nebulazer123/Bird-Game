@@ -1,3 +1,18 @@
+/**
+ * @module game
+ * BirdGame – the top-level orchestrator for Featherwind Valley.
+ *
+ * Architecture overview:
+ * - The constructor builds the Three.js scene, lighting, player bird, world
+ *   geometry, and all UI bindings, then kicks off async asset loading.
+ * - Gameplay logic lives in focused sub-modules (flight, combat, objectives, etc.);
+ *   BirdGame provides thin wrapper methods so systems can call `game.method()`
+ *   without importing modules directly.
+ * - GameEngine drives the per-frame system pipeline (see engine/systems.js).
+ * - Two modes share most of the codebase:
+ *     "zen"       – collect nine musical notes, compose at the nest; no forced combat.
+ *     "challenge" – fly through ring gates, fight enemies, land on the nest to clear the stage.
+ */
 import * as THREE from 'three';
 import { GameAssets } from './gameAssets.js';
 import { GameEngine } from './gameplay/engine/gameEngine.js';
@@ -128,23 +143,31 @@ import {
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
 
+/** Main game class. Instantiated once in main.js with the full DOM UI reference map. */
 export class BirdGame {
+  /**
+   * @param {object} ui - Map of DOM elements keyed by semantic role names.
+   *                      All data-role elements from the game shell HTML are expected here.
+   */
   constructor(ui) {
     this.ui = ui;
+    // ── Scene ──────────────────────────────────────────────────────────────────
     this.scene = new THREE.Scene();
+    // Fog blends distant terrain into the sky colour, hiding the world edge.
     this.scene.fog = new THREE.Fog(0x8bc6de, 180, 760);
 
     this.clock = new THREE.Clock();
     this.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 1400);
     this.camera.position.set(-128, 34, -26);
-    this.cameraTarget = new THREE.Vector3();
+    this.cameraTarget = new THREE.Vector3(); // Smooth look-at target, updated each frame.
 
+    // ── Renderer ───────────────────────────────────────────────────────────────
     this.renderer = new THREE.WebGLRenderer({
       canvas: ui.canvas,
       antialias: true,
       alpha: false,
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75)); // Cap DPR to keep GPU load reasonable.
     this.renderer.setSize(ui.root.clientWidth, ui.root.clientHeight, false);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -152,29 +175,33 @@ export class BirdGame {
     this.renderer.toneMappingExposure = 1.2;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
+    // ── Asset / model cache ────────────────────────────────────────────────────
     this.assets = new GameAssets(this.renderer);
     this.models = {
-      player: null,
-      enemy: null,
+      player: null,  // Loaded GLB for the player bird (optional; falls back to procedural mesh).
+      enemy: null,   // Loaded GLB for enemy birds (optional).
       kenney: {
         trees: [],
         rocks: [],
         foliage: [],
       },
     };
-    this.decor = [];
+    this.decor = []; // Flat list of all decorative scene objects for easy cleanup.
 
-    this.keys = new Set();
-    this.virtualInput = this.emptyInput();
-    this.raycaster = new THREE.Raycaster();
-    this.aimRaycaster = new THREE.Raycaster();
+    // ── Input ──────────────────────────────────────────────────────────────────
+    this.keys = new Set(); // Currently held keyboard codes (Set avoids duplicate entries).
+    this.virtualInput = this.emptyInput(); // Input fed by the autopilot AI.
+    this.raycaster = new THREE.Raycaster();      // Ground proximity raycaster.
+    this.aimRaycaster = new THREE.Raycaster();   // Shooting aim raycaster (cursor → world).
+    // Reusable vectors to avoid per-frame allocations.
     this.tmpVector = new THREE.Vector3();
     this.tmpVector2 = new THREE.Vector3();
     this.tmpVector3 = new THREE.Vector3();
     this.tmpColor = new THREE.Color();
     this.forwardVector = new THREE.Vector3();
     this.rightVector = new THREE.Vector3();
-    this.previousBirdPosition = START_POSITION.clone();
+    this.previousBirdPosition = START_POSITION.clone(); // Last frame position for ring-crossing detection.
+    // Mouse aim state: smoothed values drive heading/pitch; target values are the raw pointer position.
     this.mouseAim = {
       x: 0,
       y: 0,
@@ -184,21 +211,23 @@ export class BirdGame {
       screenY: 0.5,
     };
 
-    this.courseRings = [];
-    this.clouds = [];
-    this.groundColliders = [];
+    // ── Course / world state ───────────────────────────────────────────────────
+    this.courseRings = [];      // Active ring-gate entities for the current stage.
+    this.clouds = [];           // Cloud group meshes (also in decor for cleanup).
+    this.groundColliders = [];  // Objects tested by the ground raycaster (terrain + nest platform).
     this.playerProjectiles = [];
     this.enemyProjectiles = [];
     this.enemies = [];
-    this.enemyIdCounter = 0;
+    this.enemyIdCounter = 0; // Monotonically increasing ID used for stable enemy entity names.
     this.courseData = {
       ringPositions: [],
       nestPosition: new THREE.Vector3(),
       enemySpawns: [],
       zenNotes: [],
     };
-    this.zenNotes = [];
+    this.zenNotes = []; // Runtime zen note entities (position + mesh + collected state).
 
+    // ── Nest / world mesh references ───────────────────────────────────────────
     this.waterMaterial = null;
     this.water = null;
     this.terrain = null;
@@ -208,6 +237,8 @@ export class BirdGame {
     this.nestLip = null;
     this.nestEggs = [];
     this.guidanceArrow = null;
+    // Shared materials for player and enemy bullets; defined here to avoid
+    // recreating them every time a projectile is spawned.
     this.playerProjectileMaterial = new THREE.MeshStandardMaterial({
       color: 0xfff0a7,
       emissive: 0xffdd7f,
@@ -222,12 +253,14 @@ export class BirdGame {
       roughness: 0.26,
       metalness: 0.1,
     });
-    this.debugLastShotAt = 0;
+    this.debugLastShotAt = 0; // Timestamp of the last player shot; used by debug tooling.
 
+    // ── Feature flags ──────────────────────────────────────────────────────────
     this.features = {
-      mode: 'zen',
-      combatEnabled: false,
+      mode: 'zen',            // 'zen' or 'challenge'
+      combatEnabled: false,   // False in zen mode until a territory moment triggers.
     };
+    // ── Runtime tuning (exposed to Tweakpane) ──────────────────────────────────
     this.tuning = {
       camera: {
         distanceBase: 13,
@@ -247,9 +280,10 @@ export class BirdGame {
         territoryDuration: 8,
       },
     };
-    this.audio = createAudioSystem(this);
-    this.gamepad = createGamepadState();
+    this.audio = createAudioSystem(this);  // All Howler sound instances.
+    this.gamepad = createGamepadState();   // Gamepad connection + normalised input state.
 
+    // Per-frame metadata written by FrameSystem; read by all downstream systems.
     this.frame = {
       delta: 0,
       elapsed: 0,
@@ -257,6 +291,8 @@ export class BirdGame {
       simulationDelta: 0,
     };
 
+    // ── Mutable game state ─────────────────────────────────────────────────────
+    // This flat object is the runtime state bag; systems read and write it directly.
     this.state = {
       stage: 1,
       stageSeed: 1,
@@ -330,6 +366,8 @@ export class BirdGame {
       },
     };
 
+    // ── Lighting ───────────────────────────────────────────────────────────────
+    // Directional sun light tracks the bird position so shadows are always visible.
     this.sunLight = new THREE.DirectionalLight(0xfff1bf, 2.4);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.set(2048, 2048);
@@ -343,26 +381,31 @@ export class BirdGame {
     this.sunLight.target.position.set(0, 0, 0);
     this.scene.add(this.sunLight, this.sunLight.target);
 
+    // Fill light from sky and bounce from ground to avoid pitch-black shadows.
     this.scene.add(new THREE.HemisphereLight(0xc2f0ff, 0x3e5b36, 1.15));
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.26));
 
+    // ── Bird ───────────────────────────────────────────────────────────────────
     this.bird = this.createBird();
     this.scene.add(this.bird.root);
 
+    // ── World / UI setup ───────────────────────────────────────────────────────
     this.buildSky();
     this.buildWorld();
     this.bindUi();
     this.bindEvents();
     this.installDebugHooks();
-    loadGamepadRemap(this);
-    this.tuningPane = createTuningPane(this);
-    this.onResize();
-    this.resetMission();
-    this.installVisualUpgrades();
+    loadGamepadRemap(this);              // Restore saved button remap from localStorage.
+    this.tuningPane = createTuningPane(this); // Tweakpane debug sliders.
+    this.onResize();      // Set correct aspect ratio and renderer size immediately.
+    this.resetMission();  // Build the first stage course and place the bird.
+    this.installVisualUpgrades(); // Start async asset loading (non-blocking).
 
+    // ── Engine ─────────────────────────────────────────────────────────────────
     this.engine = new GameEngine(this, createDefaultSystems());
   }
 
+  /** Returns a zeroed input state object used when autopilot is off and no input exists. */
   emptyInput() {
     return {
       forward: false,
@@ -374,6 +417,11 @@ export class BirdGame {
     };
   }
 
+  /**
+   * Creates the procedural sky dome using a custom gradient shader.
+   * A separate sun mesh is placed at a fixed world-space position for visual reference.
+   * The shader blends three colours: zenith (top), horizon, and nadir (bottom).
+   */
   buildSky() {
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(1100, 48, 24),
@@ -423,6 +471,11 @@ export class BirdGame {
     this.scene.add(sky, sun);
   }
 
+  /**
+   * Builds the static world geometry: terrain mesh, water plane, trees, rocks,
+   * foliage, clouds, and the nest tree. The terrain is also added to groundColliders
+   * so raycasts detect it.
+   */
   buildWorld() {
     this.terrain = this.createTerrain();
     this.scene.add(this.terrain);
@@ -455,6 +508,11 @@ export class BirdGame {
     this.createGuidanceArrow();
   }
 
+  /**
+   * Kicks off async loading of all optional visual assets (HDRI, character models,
+   * Kenney props). Each loader is independent; failures are silently ignored so
+   * the game works without any external assets.
+   */
   installVisualUpgrades() {
     this.loadSceneEnvironment();
     this.loadPlayerModel();
@@ -501,7 +559,9 @@ export class BirdGame {
     }
   }
 
+  /** Loads all Kenney decorative prop GLBs in parallel, then rebuilds decor if any loaded. */
   async loadKenneyModels() {
+    // collect() loads a single GLB URL, returning null on failure.
     const collect = async (url) => {
       try {
         const gltf = await this.assets.loadGlb(url);
@@ -527,6 +587,7 @@ export class BirdGame {
     this.rebuildDecor();
   }
 
+  /** Removes all decor objects and rebuilds them using the newly loaded Kenney models. */
   rebuildDecor() {
     this.clearDecor();
     this.createTrees();
@@ -535,12 +596,18 @@ export class BirdGame {
     this.createClouds();
   }
 
+  /** Removes all decor scene objects and resets the tracking arrays. */
   clearDecor() {
     this.decor.forEach((entry) => this.scene.remove(entry));
     this.decor = [];
     this.clouds = [];
   }
 
+  /**
+   * Normalises a loaded GLTF model to a target world-space size by computing its
+   * bounding box and applying a uniform scale factor. Also centres and offsets
+   * the model on Y so it sits correctly relative to its parent.
+   */
   normalizeVisual(model, { targetSize = 5, yRotation = Math.PI, yOffset = 0 } = {}) {
     model.rotation.set(0, yRotation, 0);
     model.updateMatrixWorld(true);
@@ -556,6 +623,10 @@ export class BirdGame {
     model.updateMatrixWorld(true);
   }
 
+  /**
+   * Clones a prop template, applies position/scale/rotation, enables shadows,
+   * and snaps the base to the terrain by zeroing out the bounding-box minimum Y.
+   */
   spawnPropFromTemplate(template, { position, scale = 1, rotationY = 0 } = {}) {
     const clone = template.clone(true);
     clone.rotation.y = rotationY;
@@ -577,6 +648,10 @@ export class BirdGame {
     return clone;
   }
 
+  /**
+   * Attaches the loaded player GLTF model to the bird root, hides the procedural
+   * visual group, and sets up an AnimationMixer for the first clip.
+   */
   applyPlayerModel() {
     if (!this.models.player || this.bird.model) return;
 
@@ -600,11 +675,16 @@ export class BirdGame {
     }
   }
 
+  /** Applies the enemy model to all currently spawned enemies. Called after async load. */
   applyEnemyModelToAll() {
     if (!this.models.enemy) return;
     this.enemies.forEach((enemy) => this.applyEnemyModel(enemy));
   }
 
+  /**
+   * Attaches the loaded enemy GLTF model to an individual enemy entity, applies
+   * a reddish tint to all mesh materials, and starts the animation clip.
+   */
   applyEnemyModel(enemy) {
     if (!enemy || enemy.model || !this.models.enemy) return;
 
@@ -634,6 +714,10 @@ export class BirdGame {
     }
   }
 
+  /**
+   * Clones a material and applies a reddish colour multiply and emissive tint
+   * so GLTF enemy models look visually distinct from the player bird.
+   */
   tintEnemyMaterial(material) {
     if (!material || !material.clone) return material;
     const clone = material.clone();
@@ -647,6 +731,11 @@ export class BirdGame {
     clone.needsUpdate = true;
     return clone;
   }
+  /**
+   * Generates the heightmap-based terrain mesh with per-vertex colour.
+   * The valley shape is defined by heightAt(); colour is derived from elevation
+   * using HSL interpolation between sand and fertile-green tones.
+   */
   createTerrain() {
     const geometry = new THREE.PlaneGeometry(1050, 1050, 220, 220);
     geometry.rotateX(-Math.PI / 2);
@@ -688,6 +777,12 @@ export class BirdGame {
     return mesh;
   }
 
+  /**
+   * Returns the terrain height at world-space (x, z) using the same formula
+   * applied to the geometry vertices. Used for snapping objects to the ground
+   * without raycasting.
+   * The valley centre is a sinusoidal corridor; ridges rise at the map edges.
+   */
   heightAt(x, z) {
     const valleyCenter = Math.sin((x + 120) * 0.012) * 44 + Math.sin(x * 0.023) * 10;
     const valleyDistance = Math.abs(z - valleyCenter);
@@ -698,6 +793,11 @@ export class BirdGame {
     return rolling + shelves + valleyLift - 5 + ridge;
   }
 
+  /**
+   * Constructs the procedural player bird object: a Group hierarchy of coloured
+   * SphereGeometry parts (body, head, wings, beak, tail, eyes).
+   * Returns a plain object containing the root Group and all animatable sub-nodes.
+   */
   createBird() {
     const root = new THREE.Group();
     root.rotation.order = 'YXZ';
@@ -799,6 +899,7 @@ export class BirdGame {
     };
   }
 
+  /** Removes all ring meshes from the scene and clears zen note objects. */
   clearCourseMeshes() {
     this.courseRings.forEach((ring) => this.scene.remove(ring.group));
     this.courseRings = [];
@@ -984,6 +1085,11 @@ export class BirdGame {
     }
   }
 
+  /**
+   * Creates all torus ring-gate meshes from game.courseData.ringPositions and adds
+   * them to game.courseRings. Each ring faces its successor to define the normal
+   * plane used for crossing detection.
+   */
   createCourse() {
     const ringMaterial = new THREE.MeshStandardMaterial({
       color: 0xf6b84b,
@@ -1034,6 +1140,11 @@ export class BirdGame {
     }
   }
 
+  /**
+   * Builds the nest tree: a procedural trunk + branches + leaf canopy with a
+   * platform disc on top. The glow ring and eggs are hidden by default until
+   * the finale is activated.
+   */
   createNest() {
     const trunkMaterial = new THREE.MeshStandardMaterial({
       color: 0x7a5437,
@@ -1125,6 +1236,11 @@ export class BirdGame {
     this.scene.add(this.perch);
   }
 
+  /**
+   * Creates a camera-space HUD arrow that points toward the current objective.
+   * Rendered with renderOrder 999 and no depth test so it is always visible.
+   * The arrow is attached to the camera so it stays fixed in screen space.
+   */
   createGuidanceArrow() {
     const arrowMaterial = new THREE.MeshBasicMaterial({
       color: 0xeaf6ff,
@@ -1193,6 +1309,10 @@ export class BirdGame {
     return getDebugStateSystem(this);
   }
 
+  /**
+   * Resets to stage 1 with no skills and full mission reset.
+   * Called from the "Fly Again" button and mode switches.
+   */
   resetMission() {
     this.state.stage = 1;
     this.state.skillPoints = 0;
@@ -1203,7 +1323,13 @@ export class BirdGame {
     this.resetStage(true);
   }
 
+  /**
+   * Resets all per-stage state: progress counters, timers, combat state, bird
+   * physics, and projectiles. Rebuilds the course and zen notes.
+   * @param {boolean} fullReset - If true, also resets the stage seed (mission restart).
+   */
   resetStage(fullReset = false) {
+    // Reset combat / feature flags to their per-mode defaults.
     this.features.combatEnabled = this.features.mode === 'challenge';
     this.state.ringsCleared = 0;
     this.state.feathers = 0;
@@ -1248,6 +1374,8 @@ export class BirdGame {
     this.buildZenDiscovery();
     this.setNestFinale(false);
 
+    // Place the bird at the start position and lock it in a hover until the player
+    // presses a movement key for the first time (takeoff lock).
     this.bird.root.position.copy(START_POSITION);
     this.state.awaitingTakeoff = true;
     this.state.spawnHoverY = this.bird.root.position.y;
@@ -1277,10 +1405,15 @@ export class BirdGame {
     this.updateHud();
   }
 
+  /** Returns a fresh stats snapshot from the stats module (delegates, no logic here). */
   getStats() {
     return getStats(this);
   }
 
+  /**
+   * Switches the game mode ('zen' or 'challenge'), resets combat state, and
+   * triggers a full mission restart so the new mode's rules apply immediately.
+   */
   setMode(mode = 'zen') {
     const nextMode = mode === 'challenge' ? 'challenge' : 'zen';
     this.features.mode = nextMode;
@@ -1289,6 +1422,7 @@ export class BirdGame {
     this.updateHud();
   }
 
+  /** Starts the Three.js animation loop (delegates to GameEngine). */
   start() {
     this.engine.start();
   }
@@ -1552,6 +1686,11 @@ export class BirdGame {
     saveGamepadRemap(this);
   }
 
+  /**
+   * Activates a temporary territory combat moment in zen mode.
+   * An enemy spawns near the player and pursues them for a fixed duration.
+   * After the territory timer expires the cooldown system clears combat automatically.
+   */
   spawnTerritoryMoment() {
     this.state.territoryActive = true;
     this.state.territoryTimer = this.tuning.zen.territoryDuration;
@@ -1561,6 +1700,11 @@ export class BirdGame {
     this.updateHud();
   }
 
+  /**
+   * Sends a radial wind pulse that pushes nearby enemies away.
+   * Returns false if the pulse is on cooldown. Also used as the zen-mode
+   * "fire" action (left-click / Q key) since shooting is disabled in zen.
+   */
   triggerWindPulse() {
     const stats = this.getStats();
     if (this.state.windPulseCooldown > 0) return false;
@@ -1572,6 +1716,11 @@ export class BirdGame {
     return true;
   }
 
+  /**
+   * Toggles showcase mode: freezes bird movement, spawns enemies in an orbit
+   * formation with disabled firing, and enters an orbital camera view.
+   * Used for taking promotional screenshots or testing model loading.
+   */
   // Debug-only showcase mode keeps both bird models framed for artifact capture.
   toggleShowcaseMode(forceValue) {
     const nextValue = typeof forceValue === 'boolean' ? forceValue : !this.state.showcaseMode;
@@ -1618,6 +1767,11 @@ export class BirdGame {
     this.updateHud();
   }
 
+  /**
+   * Autopilot AI: computes the heading / pitch corrections needed to fly toward
+   * the next ring (or the nest when all rings are cleared) and populates
+   * virtualInput so the normal flight system handles the actual movement.
+   */
   updateAutopilot(delta) {
     this.virtualInput = this.emptyInput();
     if (this.state.paused) return;
@@ -1661,6 +1815,11 @@ export class BirdGame {
 
   }
 
+  /**
+   * Instantly teleports the bird through every ring and lands it on the nest –
+   * used by integration tests to reach the completion state without waiting for
+   * real flight time.
+   */
   runScriptedCompletion() {
     while (this.state.activeRingIndex < this.state.totalRings) {
       const ring = this.courseRings[this.state.activeRingIndex];
@@ -1676,6 +1835,7 @@ export class BirdGame {
     if (this.state.skillPoints > 0) this.applySkill('rapidBeak');
   }
 
+  /** Handles window resize: updates camera aspect ratio and renderer size. */
   onResize() {
     const width = this.ui.root.clientWidth;
     const height = this.ui.root.clientHeight;

@@ -1,3 +1,14 @@
+/**
+ * @module debugPanelSystem
+ * Renders the developer debug panel: a JSON snapshot of game state plus
+ * button highlight states. Only runs when the panel is open to avoid per-frame
+ * JSON.stringify cost in production play.
+ */
+
+/**
+ * Refreshes the debug panel JSON readout and button highlight states.
+ * The snapshot includes bird position, progress, combat, zen, input, and asset info.
+ */
 export function updateDebugPanel(game) {
   if (!game.state.debugOpen) return;
 

@@ -1,3 +1,9 @@
+/**
+ * @module ringsSystem
+ * Per-frame ring animation, ring-crossing detection, and guidance arrow steering.
+ * Ring crossing is plane-based: the bird must cross the ring's local XY plane
+ * and the crossing point must fall within RING_CLEAR_RADIUS of the ring centre.
+ */
 import * as THREE from 'three';
 import { FEATHER_RING_STEP, RING_CLEAR_RADIUS } from '../core/config.js';
 import { smoothFactor } from '../core/math.js';
@@ -11,6 +17,11 @@ import {
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
 
+/**
+ * Returns true if the bird's movement this frame crossed the active ring's plane
+ * within the clear radius. Uses a parametric line-plane intersection so the check
+ * is reliable even at high speeds where the bird might teleport through thin geometry.
+ */
 export function didPassActiveRing(_game, activeRing, previousPosition, currentPosition) {
   if (!activeRing) return false;
   const center = activeRing.group.position;
@@ -18,19 +29,27 @@ export function didPassActiveRing(_game, activeRing, previousPosition, currentPo
 
   const prevOffset = previousPosition.clone().sub(center);
   const currOffset = currentPosition.clone().sub(center);
+  // Determine which side of the ring plane each position is on.
   const prevDot = prevOffset.dot(normal);
   const currDot = currOffset.dot(normal);
-  const crossedPlane = prevDot * currDot <= 0;
+  const crossedPlane = prevDot * currDot <= 0; // Opposite signs means a plane crossing.
   if (!crossedPlane) return false;
 
   const denominator = prevDot - currDot;
   if (Math.abs(denominator) < 1e-5) return false;
   const interpolation = clamp(prevDot / denominator, 0, 1);
   const crossingPoint = previousPosition.clone().lerp(currentPosition, interpolation);
+  // Project the radial component of the crossing point onto the ring plane to
+  // measure how far from the centre the bird actually passed through.
   const radial = crossingPoint.clone().sub(center).addScaledVector(normal, -crossingPoint.clone().sub(center).dot(normal));
   return radial.length() <= RING_CLEAR_RADIUS;
 }
 
+/**
+ * Immediately awards the active ring clear and advances the ring index.
+ * Called when using debug tools or when the plane-crossing check confirms a pass.
+ * Also awards feather bonuses at the configured ring-step interval.
+ */
 export function forceClearActiveRing(game) {
   const ring = game.courseRings[game.state.activeRingIndex];
   if (!ring || ring.cleared) return;
@@ -48,6 +67,10 @@ export function forceClearActiveRing(game) {
   if (game.features.mode === 'challenge' && game.state.activeRingIndex >= game.state.totalRings) activateFinale(game);
 }
 
+/**
+ * Debug helper: synthetically positions the bird on either side of the active ring
+ * and calls didPassActiveRing to confirm the detection works correctly.
+ */
 export function debugPassActiveRing(game) {
   const ring = game.courseRings[game.state.activeRingIndex];
   if (!ring || ring.cleared) return false;
@@ -65,6 +88,11 @@ export function debugPassActiveRing(game) {
   return false;
 }
 
+/**
+ * Rotates the camera-space guidance arrow to point toward the next objective.
+ * In zen mode the target is the next uncollected note; in challenge mode it is
+ * the active ring or, when all rings are cleared, the nest landing point.
+ */
 export function updateGuidanceArrow(game, delta) {
   if (!game.guidanceArrow) return;
   const zenTarget = game.zenNotes.find((note) => !note.collected)?.mesh?.position;
@@ -83,8 +111,14 @@ export function updateGuidanceArrow(game, delta) {
   game.guidanceArrow.rotation.z = lerp(game.guidanceArrow.rotation.z, angle, smoothFactor(8, Math.max(delta, 0.016)));
 }
 
+/**
+ * Main course update: animates ring glow/bob, checks for a ring crossing each
+ * frame, and delegates to updateNestFinale for the end-game nest sequence.
+ * Also handles the nest landing detection in challenge mode.
+ */
 export function updateCourse(game, delta, elapsed) {
   const activeRing = game.courseRings[game.state.activeRingIndex];
+  // Snapshot position before physics (done by GameEngine) to use as the "previous" frame position.
   const previousPosition = game.previousBirdPosition.clone();
 
   game.courseRings.forEach((ring, index) => {

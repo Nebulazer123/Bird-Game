@@ -1,17 +1,35 @@
+/**
+ * @module gamepadSystem
+ * Reads the browser Gamepad API each frame and produces a normalised input state
+ * matching the same shape as the keyboard input. Button assignments are configurable
+ * via a remap table persisted in localStorage.
+ */
 const DEFAULT_DEADZONE = 0.12;
 
+/**
+ * Applies a deadzone to a raw axis value and clamps the result to [-1, 1].
+ * Returns 0 for non-finite inputs to guard against hardware reporting NaN.
+ */
 function clampAxis(value, deadzone) {
   if (!Number.isFinite(value)) return 0;
   if (Math.abs(value) < deadzone) return 0;
   return Math.max(-1, Math.min(1, value));
 }
 
+/**
+ * Reads a button's numeric value from the Gamepad API, handling both the
+ * object form ({pressed, value}) and the legacy numeric form.
+ */
 function getButtonValue(button) {
   if (!button) return 0;
   if (typeof button === 'number') return button;
   return button.value ?? (button.pressed ? 1 : 0);
 }
 
+/**
+ * Returns the default gamepad state with the standard button remap.
+ * Default assignments match a typical Xbox-style controller layout.
+ */
 export function createGamepadState() {
   return {
     connected: false,
@@ -40,6 +58,7 @@ export function createGamepadState() {
   };
 }
 
+/** Loads a previously saved button remap from localStorage, merging into the defaults. */
 export function loadGamepadRemap(game) {
   try {
     const raw = window.localStorage.getItem('bird-gamepad-remap');
@@ -56,6 +75,7 @@ export function loadGamepadRemap(game) {
   }
 }
 
+/** Persists the current button remap to localStorage for the next session. */
 export function saveGamepadRemap(game) {
   try {
     window.localStorage.setItem('bird-gamepad-remap', JSON.stringify(game.gamepad.remap));
@@ -64,6 +84,11 @@ export function saveGamepadRemap(game) {
   }
 }
 
+/**
+ * Polls navigator.getGamepads(), updates the gamepad state object on the game,
+ * and returns the normalised input state. When no pad is connected all values are
+ * zeroed / false so callers need no null checks.
+ */
 export function updateGamepadState(game) {
   const pads = navigator.getGamepads?.() ?? [];
   const pad = pads.find(Boolean);
@@ -103,6 +128,7 @@ export function updateGamepadState(game) {
     value: Number(getButtonValue(button).toFixed(2)),
   }));
 
+  // Apply per-button remap so players can reconfigure controls without code changes.
   const remap = game.gamepad.remap;
   game.gamepad.inputState = {
     moveX: game.gamepad.axes[0],

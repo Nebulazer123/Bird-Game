@@ -1,3 +1,9 @@
+/**
+ * @module flightSystem
+ * Core bird physics: applies player / autopilot inputs to heading, pitch, speed,
+ * vertical velocity, and world position. Also handles wing/tail animation and
+ * ground collision.
+ */
 import * as THREE from 'three';
 import { DOWN, WORLD_LIMIT } from '../core/config.js';
 import { forwardFromAngles, smoothFactor, wrapAngle } from '../core/math.js';
@@ -7,6 +13,11 @@ import { getStats } from './stats.js';
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
 
+/**
+ * Decrements all time-based cooldowns and respawn timers by delta.
+ * Also handles territory expiry in zen mode: when the territory timer runs out,
+ * combat is disabled and enemies are cleared.
+ */
 export function updateCooldowns(game, delta) {
   game.bird.flapCooldown = Math.max(0, game.bird.flapCooldown - delta);
   game.bird.boostCooldown = Math.max(0, game.bird.boostCooldown - delta);
@@ -33,6 +44,12 @@ export function updateCooldowns(game, delta) {
   });
 }
 
+/**
+ * Main bird physics update. Reads input, applies forces, integrates position, and
+ * then resolves ground collision. Short-circuits for showcase/hover modes.
+ * @param {object} game  - The BirdGame instance.
+ * @param {number} delta - Simulation delta (zero when paused).
+ */
 export function updateBird(game, delta) {
   if (delta <= 0) {
     animateBird(game, 0);
@@ -61,9 +78,11 @@ export function updateBird(game, delta) {
 
   const input = getInputState(game);
   const stats = getStats(game);
+  // Unlock audio on the first gamepad input (browsers require a user gesture).
   if (game.gamepad.connected && (input.forward || input.brake || input.left || input.right || input.flap || input.boost || input.shoot || input.pulse)) {
     game.unlockAudio();
   }
+  // +1 for forward, -1 for brake, 0 for cruise (the bird never fully stops).
   const driveInput = (input.forward ? 1 : 0) - (input.brake ? 1 : 0);
   const strafeInput = (input.right ? 1 : 0) - (input.left ? 1 : 0);
   const targetSpeed = driveInput > 0
@@ -72,6 +91,7 @@ export function updateBird(game, delta) {
       ? -stats.reverseSpeed
       : stats.cruiseSpeed;
 
+  // Trigger a dash burst if F / right-trigger pressed and off cooldown.
   if (input.boost && game.bird.boostCooldown <= 0) {
     game.bird.dashTimer = stats.dashDuration;
     game.bird.boostCooldown = stats.boostCooldown;
@@ -79,6 +99,7 @@ export function updateBird(game, delta) {
     game.state.tutorialUsage.boost += 1;
   }
 
+  // Edge-trigger flap: only fires once per key-press to avoid continuous upward thrust.
   if (input.flap && !game.bird.lastFlap && game.bird.flapCooldown <= 0) {
     game.bird.verticalVelocity += stats.flapImpulse;
     game.bird.flapCooldown = stats.flapCooldown;
@@ -102,10 +123,12 @@ export function updateBird(game, delta) {
   }
   game.bird.lastPause = input.pause;
 
+  // Accumulate yaw from mouse X offset; wrap to keep within [-π, π].
   game.bird.heading = wrapAngle(game.bird.heading + game.mouseAim.x * stats.yawRate * delta);
   game.bird.pitch = clamp(game.bird.pitch + game.mouseAim.y * stats.pitchRate * delta, -0.52, 0.48);
 
   game.bird.speed = lerp(game.bird.speed, targetSpeed, smoothFactor(stats.acceleration, delta));
+  // During a dash the speed floor is raised; dashLift adds a brief upward kick.
   if (game.bird.dashTimer > 0) {
     game.bird.speed = Math.max(game.bird.speed, targetSpeed >= 0 ? stats.cruiseSpeed + stats.dashSpeedBonus : game.bird.speed);
     game.bird.verticalVelocity += stats.dashLift * delta;
@@ -115,17 +138,20 @@ export function updateBird(game, delta) {
   game.bird.verticalVelocity *= 1 - Math.min(0.95, stats.verticalDrag * delta * 0.38);
   game.bird.verticalVelocity = clamp(game.bird.verticalVelocity, -stats.maxDrop, stats.maxClimb);
 
+  // Integrate position using forward vector (heading+pitch) plus lateral strafe.
   const forward = forwardFromAngles(game.bird.heading, game.bird.pitch, game.forwardVector);
   game.rightVector.set(Math.cos(game.bird.heading), 0, -Math.sin(game.bird.heading));
   game.bird.root.position.addScaledVector(forward, game.bird.speed * delta);
   game.bird.root.position.addScaledVector(game.rightVector, strafeInput * stats.strafeSpeed * delta);
   game.bird.root.position.y += game.bird.verticalVelocity * delta;
 
+  // Clamp XZ to world boundaries to prevent the bird from flying out of the terrain.
   game.bird.root.position.x = clamp(game.bird.root.position.x, -WORLD_LIMIT, WORLD_LIMIT);
   game.bird.root.position.z = clamp(game.bird.root.position.z, -WORLD_LIMIT, WORLD_LIMIT);
 
   resolveGround(game, stats);
 
+  // Bank the bird body into turns; add a subtle mouse-aim lean for responsiveness.
   game.bird.bank = lerp(game.bird.bank, -strafeInput * 0.62 + game.mouseAim.x * 0.16, smoothFactor(5.5, delta));
   const pitch = clamp(-game.bird.pitch - game.bird.verticalVelocity / 28, -0.58, 0.46);
   game.bird.root.rotation.set(pitch, game.bird.heading, game.bird.bank);
@@ -133,6 +159,11 @@ export function updateBird(game, delta) {
   animateBird(game, delta);
 }
 
+/**
+ * Casts a ray downward from above the bird and adjusts its Y position to prevent
+ * clipping into the terrain. If the bird is too close to the ground and not near
+ * a landing nest, it triggers the player death sequence.
+ */
 export function resolveGround(game, stats) {
   game.raycaster.far = 90;
   game.raycaster.set(game.bird.root.position.clone().add(new THREE.Vector3(0, 40, 0)), DOWN);
@@ -158,6 +189,11 @@ export function resolveGround(game, stats) {
   }
 }
 
+/**
+ * Drives the procedural wing-flap and tail animation each frame.
+ * When a GLTF model is present its AnimationMixer is advanced instead,
+ * with speed scaled by flight velocity and whether the bird is flapping.
+ */
 export function animateBird(game, delta) {
   game.bird.flapCycle += delta * (5.3 + clamp(game.bird.speed / 10, 1.5, 4.5));
   const flap = Math.sin(game.bird.flapCycle) * (game.bird.lastFlap ? 0.9 : 0.52);
