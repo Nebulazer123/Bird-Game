@@ -1,3 +1,10 @@
+/**
+ * @module stats
+ * Computes live bird statistics by combining base values with feather bonuses
+ * and unlocked skill modifiers. Called each frame so changes take effect immediately
+ * without requiring explicit invalidation. Also updates game.state.maxHealth as a
+ * side-effect so the health cap is always in sync.
+ */
 import {
   DEATH_ANIMATION_SECONDS,
   FEATHER_SPEED_BONUS,
@@ -5,11 +12,18 @@ import {
   RESPAWN_SHIELD_SECONDS,
 } from '../core/config.js';
 
+/**
+ * Returns a fresh stats snapshot for this frame.
+ * Every numeric field is consumed by other systems (flightSystem, enemySystem, etc.)
+ * so the values here are the single source of truth for tuning feel.
+ */
 export function getStats(game) {
   const skills = game.state.unlockedSkills;
+  // Feathers passively scale speed and yaw with each ring cleared.
   const featherSpeed = game.state.feathers * FEATHER_SPEED_BONUS;
   const featherYaw = game.state.feathers * FEATHER_YAW_BONUS;
   const healthBoost = skills.shellGuard ? 24 : 0;
+  // Zen mode grants a wind-pocket speed bonus from the tuning pane.
   const windPocketBonus = game.features.mode === 'zen' ? game.tuning.zen.windPocketStrength : 0;
   game.state.maxHealth = 100 + healthBoost;
   if (game.state.health > game.state.maxHealth) game.state.health = game.state.maxHealth;

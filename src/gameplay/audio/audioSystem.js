@@ -1,10 +1,23 @@
+/**
+ * @module audioSystem
+ * Procedurally generates all game audio as PCM WAV data URIs played through Howler.
+ * No external audio assets are required – each sound is synthesised from a sine wave
+ * with an exponential decay envelope. Musical note tones are cached on first use.
+ */
 import { Howl, Howler } from 'howler';
 
+/**
+ * Generates a single-tone WAV data URI with an exponential decay envelope.
+ * The output is suitable as a Howl src string for inline audio playback.
+ * @param {number} frequency      - Tone frequency in Hz.
+ * @param {number} durationSeconds - Total duration (tail may be near-silence due to decay).
+ * @param {number} volume          - Peak amplitude multiplier (0–1).
+ */
 function buildToneDataUri(frequency = 440, durationSeconds = 0.18, volume = 0.35) {
   const sampleRate = 22050;
   const sampleCount = Math.max(1, Math.floor(sampleRate * durationSeconds));
-  const dataSize = sampleCount * 2;
-  const buffer = new ArrayBuffer(44 + dataSize);
+  const dataSize = sampleCount * 2; // 16-bit samples = 2 bytes each
+  const buffer = new ArrayBuffer(44 + dataSize); // 44-byte WAV header + PCM data
   const view = new DataView(buffer);
 
   const writeString = (offset, value) => {
@@ -13,6 +26,7 @@ function buildToneDataUri(frequency = 440, durationSeconds = 0.18, volume = 0.35
     }
   };
 
+  // Write the standard RIFF/WAVE/fmt /data header fields.
   writeString(0, 'RIFF');
   view.setUint32(4, 36 + dataSize, true);
   writeString(8, 'WAVE');
@@ -29,6 +43,7 @@ function buildToneDataUri(frequency = 440, durationSeconds = 0.18, volume = 0.35
 
   for (let index = 0; index < sampleCount; index += 1) {
     const time = index / sampleRate;
+    // Exponential decay makes the note sound bell-like rather than sustaining.
     const envelope = Math.exp(-time * 6.8);
     const sample = Math.sin(Math.PI * 2 * frequency * time) * envelope * volume;
     view.setInt16(44 + index * 2, sample * 32767, true);
@@ -42,6 +57,7 @@ function buildToneDataUri(frequency = 440, durationSeconds = 0.18, volume = 0.35
   return `data:audio/wav;base64,${btoa(binary)}`;
 }
 
+/** Named musical pitches mapped to their Hz frequencies, used for zen note collection. */
 const TONE_MAP = {
   C4: 261.63,
   D4: 293.66,
@@ -55,6 +71,7 @@ const TONE_MAP = {
   C6: 1046.5,
 };
 
+/** Wraps Howl construction with common defaults for in-memory audio. */
 function createSound(src, options = {}) {
   return new Howl({
     src: [src],
@@ -64,7 +81,13 @@ function createSound(src, options = {}) {
   });
 }
 
+/**
+ * Builds and returns the audio system object containing all pre-generated sounds.
+ * Sounds are created immediately but remain silent until unlockAudio() is called
+ * (browser autoplay policy requires a user gesture first).
+ */
 export function createAudioSystem(game) {
+  // Pre-generate all sound data URIs so playback is instantaneous during gameplay.
   const ambienceSource = buildToneDataUri(220, 2.8, 0.12);
   const flapSource = buildToneDataUri(520, 0.09, 0.22);
   const boostSource = buildToneDataUri(340, 0.14, 0.28);
@@ -86,23 +109,33 @@ export function createAudioSystem(game) {
   };
 }
 
+/**
+ * Permits audio playback after the first user gesture. Sets Howler master volume
+ * from the current tuning value.
+ */
 export function unlockAudio(game) {
   if (!game.audio) return;
   game.audio.unlocked = true;
   Howler.volume(game.tuning.audio.masterVolume);
 }
 
+/** Propagates the current master volume from the tuning object to Howler. */
 export function syncAudioTuning(game) {
   if (!game.audio) return;
   game.audio.masterVolume = game.tuning.audio.masterVolume;
   Howler.volume(game.audio.masterVolume);
 }
 
+/** Plays a named one-shot audio cue (e.g. 'flap', 'boost') if audio is unlocked. */
 export function playAudioCue(game, key) {
   if (!game.audio?.unlocked) return;
   game.audio[key]?.play?.();
 }
 
+/**
+ * Plays the tone for a collected zen note, lazily generating and caching the Howl
+ * instance for each unique tone name on first use.
+ */
 export function playNoteCollect(game, tone = 'C4') {
   if (!game.audio?.unlocked) return;
   const frequency = TONE_MAP[tone] ?? TONE_MAP.C4;
@@ -115,6 +148,10 @@ export function playNoteCollect(game, tone = 'C4') {
   game.audio.noteCache.get(tone)?.play?.();
 }
 
+/**
+ * Per-frame audio update: syncs volume, starts ambience on the first unpaused frame,
+ * and adjusts ambience loudness based on the current game mode.
+ */
 export function updateAudio(game) {
   if (!game.audio?.unlocked) return;
 

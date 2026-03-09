@@ -1,11 +1,23 @@
+/**
+ * @module zenDiscoverySystem
+ * Generates, places, and animates the nine zen note collectibles.
+ * Notes are spaced along the ring course positions so following the rings
+ * naturally leads the player past most notes. The final note is always near
+ * the nest to encourage composition.
+ */
 import * as THREE from 'three';
 
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
 
 const ZEN_NOTE_COUNT = 9;
+// Collection trigger radius; large enough to feel generous without being trivial.
 const NOTE_COLLECT_RADIUS = 8.5;
 
+/**
+ * Builds the Three.js mesh for a single zen note: a glowing golden sphere
+ * surrounded by a cyan torus halo ring for easy visual identification.
+ */
 function createZenNoteMesh() {
   const root = new THREE.Group();
 
@@ -44,10 +56,16 @@ function createZenNoteMesh() {
   return root;
 }
 
+/** Maps a note index to a musical tone name from a pentatonic-ish scale. */
 function noteTone(index) {
   return ['C4', 'D4', 'E4', 'G4', 'A4', 'C5', 'D5', 'E5', 'G5'][index % ZEN_NOTE_COUNT];
 }
 
+/**
+ * Distributes note positions alongside the ring course, staggered left/right so
+ * they are easy to spot while flying the route. The last note is always relocated
+ * near the nest to pull the player there for composition.
+ */
 export function generateZenDiscoveryLayout(game) {
   const notes = [];
   const ringPositions = game.courseData.ringPositions ?? [];
@@ -61,6 +79,7 @@ export function generateZenDiscoveryLayout(game) {
       index % 2 === 0 ? -14 : 18,
     );
     const position = ringPoint.clone().add(offset);
+    // Ensure each note floats visibly above the terrain, never buried.
     position.y = Math.max(position.y, game.heightAt(position.x, position.z) + 12);
     notes.push({
       id: `note-${index + 1}`,
@@ -84,6 +103,7 @@ export function generateZenDiscoveryLayout(game) {
   game.state.zen.notesTotal = notes.length;
 }
 
+/** Removes all zen note meshes from the scene and clears the notes array. */
 export function clearZenDiscovery(game) {
   game.zenNotes.forEach((note) => {
     if (note.mesh) {
@@ -93,6 +113,7 @@ export function clearZenDiscovery(game) {
   game.zenNotes = [];
 }
 
+/** Clears the previous layout and builds fresh note meshes at the new positions. */
 export function buildZenDiscovery(game) {
   clearZenDiscovery(game);
   generateZenDiscoveryLayout(game);
@@ -108,6 +129,7 @@ export function buildZenDiscovery(game) {
   });
 }
 
+/** Resets all zen collection progress without removing meshes from the scene. */
 export function resetZenProgress(game) {
   game.state.zen.notesCollected = 0;
   game.state.zen.composed = false;
@@ -118,10 +140,16 @@ export function resetZenProgress(game) {
   });
 }
 
+/** Returns the first uncollected note, or null when all have been gathered. */
 export function getNextZenTarget(game) {
   return game.zenNotes.find((note) => !note.collected) ?? null;
 }
 
+/**
+ * Marks a note as collected, updates state counters, plays the note tone,
+ * and advances the discovery target to the next uncollected note.
+ * Returns false if the note does not exist or was already collected.
+ */
 export function collectZenNote(game, noteId) {
   const note = game.zenNotes.find((entry) => entry.id === noteId);
   if (!note || note.collected) return false;
@@ -139,6 +167,10 @@ export function collectZenNote(game, noteId) {
   return true;
 }
 
+/**
+ * Per-frame update for zen mode: animates each note's bob, rotation, and halo opacity,
+ * and checks whether the bird is close enough to collect any note this frame.
+ */
 export function updateZenDiscovery(game, delta, elapsed) {
   if (game.features.mode !== 'zen') return;
 

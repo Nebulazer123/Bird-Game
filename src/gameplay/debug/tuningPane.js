@@ -1,5 +1,15 @@
+/**
+ * @module tuningPane
+ * Creates a Tweakpane-based developer tuning panel mounted inside the debug sidebar.
+ * Exposes live sliders for camera distance, input feel, zen wind-pocket strength,
+ * and master audio volume. Changes take effect immediately without restarting.
+ */
 import { Pane } from 'tweakpane';
 
+/**
+ * Builds and returns the Tweakpane instance, or null if the mount element is absent.
+ * Folders are kept collapsed by default to minimise visual noise.
+ */
 export function createTuningPane(game) {
   if (!game.ui.tuningMount) return null;
 
@@ -9,6 +19,7 @@ export function createTuningPane(game) {
     expanded: false,
   });
 
+  // Mode binding calls setMode() so the full reset pipeline runs on change.
   const modeFolder = pane.addFolder({ title: 'Slice' });
   modeFolder.addBinding(game.features, 'mode', {
     label: 'Mode',

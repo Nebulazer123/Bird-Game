@@ -1,9 +1,19 @@
+/**
+ * @module input
+ * Handles all input gathering and cursor/reticle management.
+ * Abstracts keyboard, mouse, and gamepad sources into a unified input object
+ * so the flight system does not need to know which device is active.
+ */
 import * as THREE from 'three';
 import { smoothFactor } from '../core/math.js';
 
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
 
+/**
+ * Reads all active input sources and returns a normalised action state object.
+ * Autopilot and showcase mode short-circuit to virtual / empty inputs respectively.
+ */
 export function getInputState(game) {
   const gamepad = game.updateGamepadState();
 
@@ -28,10 +38,15 @@ export function getInputState(game) {
   };
 }
 
+/** Returns true for keys that count as movement and should release the takeoff lock. */
 export function isMovementKey(code) {
   return ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyF', 'KeyQ'].includes(code);
 }
 
+/**
+ * Clears the takeoff-lock state so the bird starts flying when the player
+ * presses a movement key after spawning at the nest.
+ */
 export function releaseTakeoffLock(game) {
   if (!game.state.awaitingTakeoff) return;
   game.state.awaitingTakeoff = false;
@@ -39,6 +54,7 @@ export function releaseTakeoffLock(game) {
   game.bird.lastFlap = false;
 }
 
+/** Zeroes mouse aim and resets the reticle to the screen centre. */
 export function resetMouseAim(game) {
   game.mouseAim.x = 0;
   game.mouseAim.y = 0;
@@ -49,6 +65,10 @@ export function resetMouseAim(game) {
   syncReticle(game);
 }
 
+/**
+ * Converts a raw pointer position (client coordinates) into normalised aim offsets.
+ * The aim range is [-1, 1] on each axis, where 0 means "centre of screen".
+ */
 export function setMouseAimFromPointer(game, clientX, clientY) {
   const rect = game.ui.canvas.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
@@ -63,6 +83,7 @@ export function setMouseAimFromPointer(game, clientX, clientY) {
   syncReticle(game);
 }
 
+/** Moves the reticle DOM element to match the current screen-space aim position. */
 export function syncReticle(game) {
   if (!game.ui.reticle) return;
 
@@ -70,6 +91,11 @@ export function syncReticle(game) {
   game.ui.reticle.style.top = `${(game.mouseAim.screenY * 100).toFixed(2)}%`;
 }
 
+/**
+ * Smoothly advances the mouse aim values towards their targets.
+ * When a gamepad is connected, the right-stick axes replace the mouse targets
+ * and the reticle is repositioned accordingly.
+ */
 export function updateAimState(game, delta) {
   const blend = smoothFactor(game.tuning.input.aimSmoothing, Math.max(delta, 0.016));
   if (game.gamepad.connected) {

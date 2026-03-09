@@ -1,3 +1,10 @@
+/**
+ * @module enemySystem
+ * Manages the enemy bird lifecycle: creation, wave spawning, orbit AI,
+ * wing animation, health bars, wind-pulse repulsion, and respawning.
+ * Each enemy orbits a central point (ring, nest, or player) and fires
+ * at the player when within attack range.
+ */
 import * as THREE from 'three';
 import { forwardFromAngles, smoothFactor, wrapAngle } from '../core/math.js';
 import { getStats } from '../flight/stats.js';
@@ -6,6 +13,7 @@ import { spawnEnemyProjectile } from './projectileSystem.js';
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
 
+/** Removes all active enemies from the scene and empties the enemies array. */
 export function clearEnemies(game) {
   game.enemies.forEach((enemy) => {
     game.scene.remove(enemy.root);
@@ -13,7 +21,14 @@ export function clearEnemies(game) {
   game.enemies = [];
 }
 
+/**
+ * Constructs a procedural enemy bird mesh, attaches a canvas health bar, and
+ * returns a fully-initialised enemy entity object. The `behavior` parameter
+ * controls orbit style: 'patrol' follows rings, 'territory' tracks the player,
+ * 'corner' holds a fixed finale position.
+ */
 export function createEnemyEntity(game, position, behavior = 'patrol') {
+  // Corner enemies (finale wave) use a slightly different tint to signal danger.
   const bodyMaterial = new THREE.MeshStandardMaterial({
     color: behavior === 'corner' ? 0xc86468 : 0xd86d58,
     roughness: 0.52,
@@ -54,6 +69,7 @@ export function createEnemyEntity(game, position, behavior = 'patrol') {
   root.scale.setScalar(1.7);
   root.position.copy(position);
 
+  // The health bar is a canvas texture rendered on a billboard plane above the enemy.
   const barCanvas = document.createElement('canvas');
   barCanvas.width = 128;
   barCanvas.height = 16;
@@ -100,6 +116,12 @@ export function createEnemyEntity(game, position, behavior = 'patrol') {
   };
 }
 
+/**
+ * Clears existing enemies and spawns a new wave based on mode.
+ * 'patrol' – one enemy orbiting the middle ring.
+ * 'territory' – one enemy that tracks the player (zen mode event).
+ * 'finale' – three corner-positioned enemies after all rings are cleared.
+ */
 export function spawnEnemyWave(game, mode = 'patrol') {
   clearEnemies(game);
   game.state.enemyWave = mode;
@@ -116,10 +138,12 @@ export function spawnEnemyWave(game, mode = 'patrol') {
   game.enemies.forEach((enemy) => updateEnemyHealthBar(game, enemy));
 }
 
+/** Returns the first living enemy, or the first enemy regardless of alive state, or null. */
 export function getPrimaryEnemy(game) {
   return game.enemies.find((enemy) => enemy.alive) ?? game.enemies[0] ?? null;
 }
 
+/** Directly sets the primary enemy health (used by debug tools). */
 export function setPrimaryEnemyHealth(game, value) {
   const enemy = getPrimaryEnemy(game);
   if (!enemy) return;
@@ -129,6 +153,11 @@ export function setPrimaryEnemyHealth(game, value) {
   updateEnemyHealthBar(game, enemy);
 }
 
+/**
+ * Applies damage to the primary enemy, updating the health bar and marking it
+ * as dead when health reaches zero. Dead enemies respawn after a delay.
+ * Returns true if a hit landed, false if no target existed.
+ */
 export function hitPrimaryEnemy(game, amount = 1) {
   const enemy = getPrimaryEnemy(game);
   if (!enemy || !enemy.alive) return false;
@@ -144,6 +173,7 @@ export function hitPrimaryEnemy(game, amount = 1) {
   return true;
 }
 
+/** Teleports the primary enemy to a position just ahead of the player – used by debug tools. */
 export function forceEnemyNearPlayer(game) {
   const enemy = getPrimaryEnemy(game);
   if (!enemy) return;
@@ -157,6 +187,7 @@ export function forceEnemyNearPlayer(game) {
   updateEnemyHealthBar(game, enemy);
 }
 
+/** Teleports the enemy directly in front of the bird's current aim direction. */
 export function forceEnemyInFront(game) {
   const enemy = getPrimaryEnemy(game);
   if (!enemy) return;
@@ -173,6 +204,10 @@ export function forceEnemyInFront(game) {
   updateEnemyHealthBar(game, enemy);
 }
 
+/**
+ * Per-frame enemy AI: handles respawn countdown, orbit movement, heading/pitch
+ * smoothing, animation, wind-pulse repulsion, and firing at the player.
+ */
 export function updateEnemy(game, delta, elapsed) {
   if (delta <= 0) return;
   if (game.state.showcaseMode) {
@@ -200,6 +235,7 @@ export function updateEnemy(game, delta, elapsed) {
       : enemy.behavior === 'territory'
         ? game.bird.root.position
       : center;
+    // Orbit radius varies per behavior: corner enemies stay tight, territory follows player, patrol sweeps rings.
     const orbitRadius = enemy.behavior === 'corner' ? 16 + index * 3 : enemy.behavior === 'territory' ? 14 : 26 + Math.sin(enemy.orbitPhase * 1.6) * 8;
     const orbitHeight = targetCenter.y + (enemy.behavior === 'territory' ? 4 : 7) + Math.sin(elapsed * 0.6 + index) * 3;
     const orbitPoint = new THREE.Vector3(
@@ -233,6 +269,7 @@ export function updateEnemy(game, delta, elapsed) {
       enemy.rightWing.rotation.z = 0.28 - flap;
     }
 
+    // Wind pulse pushes enemies away; if a territory enemy is nearly out of range, expire the event early.
     if (game.state.windPulseTimer > 0 && toBird.length() < stats.windPulseRadius) {
       enemy.root.position.addScaledVector(enemy.root.position.clone().sub(game.bird.root.position).normalize(), stats.windPulsePush * delta);
       enemy.attackCooldown = Math.max(enemy.attackCooldown, 1.4);
@@ -255,6 +292,10 @@ export function updateEnemy(game, delta, elapsed) {
   });
 }
 
+/**
+ * Special enemy update for showcase mode: enemies orbit the bird in a fixed ring
+ * formation rather than executing combat AI.
+ */
 export function updateEnemyShowcase(game, delta, elapsed) {
   const birdPos = game.bird.root.position;
   const radius = 18;
@@ -296,6 +337,11 @@ export function updateEnemyShowcase(game, delta, elapsed) {
   });
 }
 
+/**
+ * Redraws the health bar canvas texture for the given enemy.
+ * The bar colour transitions green → yellow → red as health drops.
+ * Early-outs if health hasn't changed to avoid unnecessary GPU uploads.
+ */
 export function updateEnemyHealthBar(game, enemy) {
   if (!enemy || !enemy.healthBar) return;
   if (!enemy.alive) {

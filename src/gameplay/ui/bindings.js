@@ -1,3 +1,13 @@
+/**
+ * @module bindings
+ * Attaches all DOM event listeners for UI buttons and global keyboard/mouse/window
+ * events. Kept separate from game logic so the event wiring is easy to audit.
+ */
+
+/**
+ * Returns true if the keyboard event matches the backtick / grave accent key that
+ * toggles the debug panel. Handles various browser/OS keycodes for this key.
+ */
 function isDebugToggleKey(event) {
   const rawCode = Number(event.keyCode ?? event.which ?? -1);
   const key = typeof event.key === 'string' ? event.key : '';
@@ -7,6 +17,10 @@ function isDebugToggleKey(event) {
   return key === '`' || key === '~' || key === 'Dead' || key === 'ˋ';
 }
 
+/**
+ * Wires click handlers for all overlay buttons (skill tree, restart, pause,
+ * debug actions). Must be called once during construction.
+ */
 export function bindUi(game) {
   game.ui.skillButtons.forEach((button) => {
     button.addEventListener('click', () => {
@@ -81,11 +95,15 @@ export function bindUi(game) {
   }
 }
 
+/**
+ * Attaches global window / document event listeners for resize, mouse, keyboard,
+ * and unhandled errors. Call once after the DOM is ready.
+ */
 export function bindEvents(game) {
   window.addEventListener('resize', () => game.onResize());
 
   window.addEventListener('mousemove', (event) => {
-    game.unlockAudio();
+    game.unlockAudio(); // Treat any mouse movement as a user gesture.
     if (game.state.autopilot) return;
     game.setMouseAimFromPointer(event.clientX, event.clientY);
   });
@@ -106,6 +124,7 @@ export function bindEvents(game) {
 
   game.ui.canvas.addEventListener('wheel', (event) => {
     event.preventDefault();
+    // Scroll wheel adjusts camera zoom distance within the allowed range.
     const next = game.state.cameraZoom + event.deltaY * 0.0015;
     game.state.cameraZoom = Math.max(0.6, Math.min(1.8, next));
   }, { passive: false });
@@ -150,12 +169,13 @@ export function bindEvents(game) {
   });
 
   window.addEventListener('blur', () => {
-    game.keys.clear();
+    game.keys.clear(); // Release all keys so nothing is stuck when the window loses focus.
     if (!game.state.autopilot) {
       game.resetMouseAim();
     }
   });
 
+  // Capture unhandled errors so they are visible in the debug panel JSON.
   window.addEventListener('error', (event) => {
     game.state.errors.push(String(event.error ?? event.message));
   });

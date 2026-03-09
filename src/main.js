@@ -1,3 +1,11 @@
+/**
+ * @module main
+ * Application entry point for Featherwind Valley.
+ * Injects the full game shell HTML into the #app element, queries all
+ * data-role references, and hands them to BirdGame before starting the loop.
+ * Keeping the DOM structure here makes it easy to add or rename UI elements
+ * without touching game logic.
+ */
 import './style.css';
 import { BirdGame } from './game.js';
 
@@ -179,6 +187,8 @@ app.innerHTML = `
 
 const root = app.querySelector('.game-shell');
 
+// Build a map of all data-role UI elements and pass them to BirdGame.
+// Using data-role attributes decouples CSS class names from JavaScript lookups.
 const game = new BirdGame({
   root,
   canvas: root.querySelector('.game-canvas'),
@@ -233,4 +243,5 @@ const game = new BirdGame({
   skillButtons: [...root.querySelectorAll('[data-skill]')],
 });
 
+// Start the Three.js animation loop; the engine ticks from here.
 game.start();

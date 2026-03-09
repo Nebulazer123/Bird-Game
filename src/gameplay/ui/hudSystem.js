@@ -1,8 +1,15 @@
+/**
+ * @module hudSystem
+ * Updates all DOM HUD elements each frame: objective text, stat readouts,
+ * cooldown meter fills, threat indicator, danger warnings, and skill overlay state.
+ * Also owns toggle helpers for pause, skill menu, god mode, and debug panel.
+ */
 import * as THREE from 'three';
 import { MPH_PER_SPEED } from '../core/config.js';
 
 const clamp = THREE.MathUtils.clamp;
 
+/** Returns the title and hint text for the current zen objective. */
 function getZenObjective(game) {
   if (game.state.completed && game.state.zen.composed) {
     return {
@@ -25,6 +32,7 @@ function getZenObjective(game) {
   };
 }
 
+/** Returns the title and hint text for the current challenge gate objective. */
 function getChallengeObjective(game) {
   const nextTarget = game.state.activeRingIndex < game.state.totalRings
     ? `Gate ${game.state.activeRingIndex + 1} / ${game.state.totalRings}`
@@ -38,6 +46,11 @@ function getChallengeObjective(game) {
   };
 }
 
+/**
+ * Computes the current threat level and bearing angle toward the primary enemy.
+ * Level 0 means no threat; level 1 means the enemy is very close.
+ * The angle is used to rotate the threat indicator widget.
+ */
 function getThreatState(game) {
   const primaryEnemy = game.getPrimaryEnemy();
   if (!primaryEnemy || !primaryEnemy.alive) {
@@ -64,6 +77,10 @@ function getThreatState(game) {
   };
 }
 
+/**
+ * Returns a contextual hint shown in the corner for new players.
+ * Hints are suppressed while the player is being hit or near the ground.
+ */
 function getTutorialPrompt(game) {
   if (game.state.recentHitTimer > 0 || game.state.lastGroundDistance < 9) return '';
   if (game.state.awaitingTakeoff) return 'Press W or push the left stick forward to start gliding.';
@@ -73,6 +90,10 @@ function getTutorialPrompt(game) {
   return '';
 }
 
+/**
+ * Main HUD update: refreshes all text content, CSS class toggles, and inline
+ * styles for meters, rings, and threat indicator in one pass.
+ */
 export function updateHud(game) {
   const objective = game.features.mode === 'zen' ? getZenObjective(game) : getChallengeObjective(game);
   const threat = getThreatState(game);
@@ -149,6 +170,10 @@ export function updateHud(game) {
   });
 }
 
+/**
+ * Opens or closes the skill tree overlay. No-ops in zen mode since skills
+ * are challenge-only. Clears held keys to prevent stuck movement after close.
+ */
 export function toggleSkillMenu(game, forceValue) {
   if (game.features.mode === 'zen') {
     game.state.skillMenuOpen = false;
@@ -165,6 +190,7 @@ export function toggleSkillMenu(game, forceValue) {
   if (wantsOpen) game.keys.clear();
 }
 
+/** Toggles the pause overlay; no-ops if the stage is already completed. */
 export function togglePause(game, forceValue) {
   if (game.state.completed) return;
   const nextValue = typeof forceValue === 'boolean' ? forceValue : !game.state.paused;
@@ -173,12 +199,14 @@ export function togglePause(game, forceValue) {
   game.keys.clear();
 }
 
+/** Toggles the debug panel visibility (the `\`` key panel with the JSON readout). */
 export function toggleDebugPanel(game, forceValue) {
   const nextValue = typeof forceValue === 'boolean' ? forceValue : !game.state.debugOpen;
   game.state.debugOpen = nextValue;
   game.ui.debugPanel.classList.toggle('is-hidden', !nextValue);
 }
 
+/** Toggles god mode (invincibility) and refreshes the HUD to reflect the change. */
 export function toggleGodMode(game, forceValue) {
   game.state.godMode = typeof forceValue === 'boolean' ? forceValue : !game.state.godMode;
   game.updateHud();

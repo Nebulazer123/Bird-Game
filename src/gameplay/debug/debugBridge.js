@@ -1,8 +1,21 @@
+/**
+ * @module debugBridge
+ * Installs the window.__birdSongDebug console API and the window.render_game_to_text
+ * helper used by automated tests and browser-based development tooling.
+ * Also provides getDebugState() which returns a flat snapshot of all observable
+ * game state for assertions in integration tests.
+ */
 import * as THREE from 'three';
 
 const clamp = THREE.MathUtils.clamp;
 
+/**
+ * Attaches all debug entry points to the window object so they are accessible
+ * from the browser DevTools console without importing the game module.
+ * Sets window.__birdSongReady = true when complete so tests can await readiness.
+ */
 export function installDebugHooks(game) {
+  /** Console API surface for manual testing and automated E2E scripts. */
   window.__birdSongDebug = {
     getState: () => game.getDebugState(),
     getStats: () => game.getStats(),
@@ -74,6 +87,10 @@ export function installDebugHooks(game) {
     },
   };
 
+  /**
+   * Returns a compact JSON-serialisable snapshot of the entire visible game state.
+   * Called by Playwright tests via page.evaluate(() => render_game_to_text()).
+   */
   window.render_game_to_text = () => JSON.stringify({
     mode: game.state.showcaseMode ? 'showcase' : game.state.completed ? 'complete' : game.state.paused ? 'paused' : game.state.skillMenuOpen ? 'skills' : 'flight',
     sliceMode: game.features.mode,
@@ -135,6 +152,10 @@ export function installDebugHooks(game) {
     lastGroundDistance: Number(game.state.lastGroundDistance.toFixed(2)),
   });
 
+  /**
+   * Advances the simulation by the given number of milliseconds in fixed 60 fps
+   * steps, then re-renders. Used by tests to fast-forward time without real waiting.
+   */
   window.advanceTime = (ms) => {
     const steps = Math.max(1, Math.round(ms / (1000 / 60)));
     for (let index = 0; index < steps; index += 1) {
@@ -147,6 +168,10 @@ export function installDebugHooks(game) {
   window.__birdSongReady = true;
 }
 
+/**
+ * Returns a flat object containing the full observable game state.
+ * Used by automated tests to make assertions without coupling to internal structures.
+ */
 export function getDebugState(game) {
   return {
     ready: true,

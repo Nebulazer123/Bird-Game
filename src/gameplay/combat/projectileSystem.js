@@ -1,3 +1,10 @@
+/**
+ * @module projectileSystem
+ * Handles spawning, movement, and collision for both player and enemy projectiles.
+ * Player bullets are aimed at the cursor world-ray intersection point; enemy
+ * bullets target the bird's current position. Both use simple sphere vs sphere
+ * collision detection each frame.
+ */
 import * as THREE from 'three';
 import {
   ENEMY_BODY_RADIUS,
@@ -7,6 +14,11 @@ import {
 } from '../core/config.js';
 import { getStats } from '../flight/stats.js';
 
+/**
+ * Fires one player bullet from the bird's beak towards the cursor aim point.
+ * In zen mode this is remapped to a wind pulse instead of a bullet.
+ * Returns false if the fire cooldown is still active.
+ */
 export function firePlayerProjectile(game) {
   const stats = getStats(game);
   if (game.bird.fireCooldown > 0) return false;
@@ -15,6 +27,7 @@ export function firePlayerProjectile(game) {
   }
 
   const muzzle = game.bird.root.localToWorld(new THREE.Vector3(0, 0.4, 3.8));
+  // Project a ray from the camera through NDC cursor coords to find the aim world point.
   const ndcX = game.mouseAim.screenX * 2 - 1;
   const ndcY = -(game.mouseAim.screenY * 2 - 1);
   game.aimRaycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), game.camera);
@@ -39,6 +52,10 @@ export function firePlayerProjectile(game) {
   return true;
 }
 
+/**
+ * Spawns one enemy projectile aimed at the given world-space target position.
+ * No-ops in zen mode or if the enemy is dead.
+ */
 export function spawnEnemyProjectile(game, targetPosition, enemy) {
   if (game.features.mode === 'zen') return;
   if (!enemy || !enemy.alive) return;
@@ -58,9 +75,15 @@ export function spawnEnemyProjectile(game, targetPosition, enemy) {
   });
 }
 
+/**
+ * Advances all active projectiles and resolves collisions.
+ * Player bullets check every enemy each frame; with piercingShot they continue
+ * after the first hit. Enemy bullets deal damage on reaching the bird.
+ */
 export function updateProjectiles(game, delta) {
   if (delta <= 0) return;
 
+  // Rebuild the player projectiles array, dropping expired or out-of-bounds shots.
   const nextPlayer = [];
   const stats = getStats(game);
   game.playerProjectiles.forEach((shot) => {
