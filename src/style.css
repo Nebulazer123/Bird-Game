@@ -211,6 +211,84 @@ kbd {
   margin-top: 0.65rem;
 }
 
+
+.map-card {
+  padding-bottom: 0.85rem;
+}
+
+.map-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.7rem;
+  margin-bottom: 0.55rem;
+}
+
+.map-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  color: rgba(240, 246, 255, 0.86);
+}
+
+.dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot.player { background: #fff0a7; }
+.dot.target { background: #8be9ff; }
+.dot.nest { background: #f5b8ff; }
+
+.mini-map {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 0.9rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 248, 224, 0.2);
+  background:
+    radial-gradient(circle at 60% 40%, rgba(118, 177, 112, 0.35), rgba(73, 120, 88, 0.5) 55%, rgba(45, 77, 63, 0.75) 100%);
+}
+
+.mini-map-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 20% 20%;
+}
+
+.mini-map-marker {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0.7rem;
+  height: 0.7rem;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px solid rgba(7, 15, 22, 0.7);
+  box-shadow: 0 0 0.35rem rgba(7, 15, 22, 0.4);
+}
+
+.mini-map-marker.player {
+  width: 0;
+  height: 0;
+  border-radius: 0;
+  border-left: 0.34rem solid transparent;
+  border-right: 0.34rem solid transparent;
+  border-bottom: 0.72rem solid #fff0a7;
+  border-top: 0;
+}
+
+.mini-map-marker.target { background: #8be9ff; }
+.mini-map-marker.nest { background: #f5b8ff; }
+
+
 .meter-row span {
   font-size: 0.8rem;
   color: rgba(236, 244, 255, 0.88);

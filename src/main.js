@@ -68,6 +68,20 @@ app.innerHTML = `
         <p data-role="aim">Mouse aim active</p>
         <p data-role="enemy">Calm air</p>
       </article>
+      <article class="glass-card map-card" data-role="map-card">
+        <div class="map-head">
+          <span class="label">Valley Map</span>
+          <span class="map-legend"><span class="dot player"></span>You</span>
+          <span class="map-legend"><span class="dot target"></span>Target</span>
+          <span class="map-legend"><span class="dot nest"></span>Nest</span>
+        </div>
+        <div class="mini-map" data-role="mini-map">
+          <div class="mini-map-grid"></div>
+          <div class="mini-map-marker nest" data-role="map-nest"></div>
+          <div class="mini-map-marker target" data-role="map-target"></div>
+          <div class="mini-map-marker player" data-role="map-player"></div>
+        </div>
+      </article>
     </section>
 
     <section class="flight-overlay">
@@ -199,6 +213,10 @@ const game = new BirdGame({
   health: root.querySelector('[data-role="health"]'),
   aim: root.querySelector('[data-role="aim"]'),
   enemy: root.querySelector('[data-role="enemy"]'),
+  miniMap: root.querySelector('[data-role="mini-map"]'),
+  mapPlayer: root.querySelector('[data-role="map-player"]'),
+  mapTarget: root.querySelector('[data-role="map-target"]'),
+  mapNest: root.querySelector('[data-role="map-nest"]'),
   dangerLabel: root.querySelector('[data-role="danger-label"]'),
   survivalWidget: root.querySelector('[data-role="survival-widget"]'),
   threatIndicator: root.querySelector('[data-role="threat-indicator"]'),
