@@ -1,25 +1,13 @@
-/**
- * @module systems
- * Factory functions that produce the individual systems plugged into GameEngine.
- * Each system is a plain object with a single `update(game, delta, elapsed)` method,
- * keeping concerns separated and making it easy to add, remove, or reorder passes.
- * The execution order in createDefaultSystems() defines the full per-frame pipeline.
- */
-
-/** Computes the shared frame descriptor used by all downstream systems. */
 function createFrameSystem() {
   return {
     update(game, delta, elapsed) {
-      // When the UI is frozen (paused or skill menu open) the simulation delta is
-      // forced to zero so physics, AI, and objectives halt without stopping the render.
-      const uiFrozen = game.state.paused || game.state.skillMenuOpen;
+      const uiFrozen = game.state.paused || game.state.skillMenuOpen || game.state.startOverlayOpen;
       const simulationDelta = uiFrozen && !game.state.autopilot ? 0 : delta;
       game.frame = { delta, elapsed, uiFrozen, simulationDelta };
     },
   };
 }
 
-/** Drives the autopilot AI or clears virtualInput when player-controlled. */
 function createAutopilotSystem() {
   return {
     update(game, delta) {
@@ -32,7 +20,6 @@ function createAutopilotSystem() {
   };
 }
 
-/** Polls the Gamepad API and normalises axes / buttons into a consistent input state. */
 function createInputDiagnosticsSystem() {
   return {
     update(game) {
@@ -41,7 +28,6 @@ function createInputDiagnosticsSystem() {
   };
 }
 
-/** Smoothly interpolates the mouse aim values towards their targets each frame. */
 function createAimSystem() {
   return {
     update(game, delta) {
@@ -50,7 +36,6 @@ function createAimSystem() {
   };
 }
 
-/** Ticks down all time-based cooldown and timer values on the bird and enemies. */
 function createCooldownSystem() {
   return {
     update(game) {
@@ -59,10 +44,6 @@ function createCooldownSystem() {
   };
 }
 
-/**
- * Handles the bird lifecycle: death tumble, win celebration, or normal flight.
- * Uses simulationDelta so all movement pauses while UI overlays are open.
- */
 function createLifecycleSystem() {
   return {
     update(game, delta) {
@@ -77,7 +58,6 @@ function createLifecycleSystem() {
   };
 }
 
-/** Updates enemy AI movement, targeting, and shooting (challenge mode only). */
 function createEnemySystem() {
   return {
     update(game, _delta, elapsed) {
@@ -87,7 +67,6 @@ function createEnemySystem() {
   };
 }
 
-/** Moves all active projectiles, checks collisions, and removes expired shots. */
 function createProjectileSystem() {
   return {
     update(game) {
@@ -97,7 +76,6 @@ function createProjectileSystem() {
   };
 }
 
-/** Animates rings, checks ring-crossing events, and triggers stage completion. */
 function createCourseSystem() {
   return {
     update(game, _delta, elapsed) {
@@ -106,7 +84,6 @@ function createCourseSystem() {
   };
 }
 
-/** Animates zen notes and detects collection proximity (zen mode only). */
 function createZenDiscoverySystem() {
   return {
     update(game, delta, elapsed) {
@@ -115,7 +92,6 @@ function createZenDiscoverySystem() {
   };
 }
 
-/** Checks whether the player can compose the valley song and triggers completion. */
 function createZenCompletionSystem() {
   return {
     update(game) {
@@ -124,7 +100,6 @@ function createZenCompletionSystem() {
   };
 }
 
-/** Animates water, drifts clouds, and repositions the sun shadow based on bird position. */
 function createEnvironmentSystem() {
   return {
     update(game, _delta, elapsed) {
@@ -133,10 +108,6 @@ function createEnvironmentSystem() {
   };
 }
 
-/**
- * Positions and orients the follow camera; always uses real delta (not simulationDelta)
- * so the camera keeps tracking the bird even when simulation is paused.
- */
 function createCameraSystem() {
   return {
     update(game) {
@@ -145,7 +116,6 @@ function createCameraSystem() {
   };
 }
 
-/** Writes live stats (speed, health, objective text, cooldown bars) to the DOM HUD. */
 function createHudSystem() {
   return {
     update(game) {
@@ -154,7 +124,6 @@ function createHudSystem() {
   };
 }
 
-/** Syncs master volume and starts background ambience once audio is unlocked. */
 function createAudioSystem() {
   return {
     update(game) {
@@ -163,7 +132,6 @@ function createAudioSystem() {
   };
 }
 
-/** Updates the collapsible debug panel JSON readout (only runs when panel is open). */
 function createDebugPanelSystem() {
   return {
     update(game) {
@@ -172,11 +140,6 @@ function createDebugPanelSystem() {
   };
 }
 
-/**
- * Assembles and returns the ordered list of all default game systems.
- * The order is intentional: frame metadata → input → physics → AI →
- * objectives → environment → camera → audio → HUD → debug.
- */
 export function createDefaultSystems() {
   return [
     createFrameSystem(),

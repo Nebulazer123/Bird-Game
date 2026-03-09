@@ -1,18 +1,3 @@
-/**
- * @module game
- * BirdGame – the top-level orchestrator for Featherwind Valley.
- *
- * Architecture overview:
- * - The constructor builds the Three.js scene, lighting, player bird, world
- *   geometry, and all UI bindings, then kicks off async asset loading.
- * - Gameplay logic lives in focused sub-modules (flight, combat, objectives, etc.);
- *   BirdGame provides thin wrapper methods so systems can call `game.method()`
- *   without importing modules directly.
- * - GameEngine drives the per-frame system pipeline (see engine/systems.js).
- * - Two modes share most of the codebase:
- *     "zen"       – collect nine musical notes, compose at the nest; no forced combat.
- *     "challenge" – fly through ring gates, fight enemies, land on the nest to clear the stage.
- */
 import * as THREE from 'three';
 import { GameAssets } from './gameAssets.js';
 import { GameEngine } from './gameplay/engine/gameEngine.js';
@@ -20,6 +5,7 @@ import { createDefaultSystems } from './gameplay/engine/systems.js';
 import {
   ASSET_URLS,
   BASE_RING_COUNT,
+  BIRD_PROFILES,
   DEATH_ANIMATION_SECONDS,
   DOWN,
   ENEMY_BODY_RADIUS,
@@ -139,35 +125,33 @@ import {
   composeZenSong as composeZenSongSystem,
   updateZenCompletion as updateZenCompletionSystem,
 } from './gameplay/zen/zenCompletionSystem.js';
+import {
+  VALLEY_LAYOUT,
+  authoredHeightAt,
+  sampleFlightLane,
+  sampleRiverState,
+} from './gameplay/presentation/valleyLayout.js';
 
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
 
-/** Main game class. Instantiated once in main.js with the full DOM UI reference map. */
 export class BirdGame {
-  /**
-   * @param {object} ui - Map of DOM elements keyed by semantic role names.
-   *                      All data-role elements from the game shell HTML are expected here.
-   */
   constructor(ui) {
     this.ui = ui;
-    // ── Scene ──────────────────────────────────────────────────────────────────
     this.scene = new THREE.Scene();
-    // Fog blends distant terrain into the sky colour, hiding the world edge.
     this.scene.fog = new THREE.Fog(0x8bc6de, 180, 760);
 
     this.clock = new THREE.Clock();
     this.camera = new THREE.PerspectiveCamera(58, 1, 0.1, 1400);
     this.camera.position.set(-128, 34, -26);
-    this.cameraTarget = new THREE.Vector3(); // Smooth look-at target, updated each frame.
+    this.cameraTarget = new THREE.Vector3();
 
-    // ── Renderer ───────────────────────────────────────────────────────────────
     this.renderer = new THREE.WebGLRenderer({
       canvas: ui.canvas,
       antialias: true,
       alpha: false,
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75)); // Cap DPR to keep GPU load reasonable.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     this.renderer.setSize(ui.root.clientWidth, ui.root.clientHeight, false);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -175,33 +159,36 @@ export class BirdGame {
     this.renderer.toneMappingExposure = 1.2;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    // ── Asset / model cache ────────────────────────────────────────────────────
     this.assets = new GameAssets(this.renderer);
     this.models = {
-      player: null,  // Loaded GLB for the player bird (optional; falls back to procedural mesh).
-      enemy: null,   // Loaded GLB for enemy birds (optional).
+      player: null,
+      enemy: null,
+      quaternius: {
+        trees: [],
+        deadTrees: [],
+        rocks: [],
+        pathRocks: [],
+        foliage: [],
+      },
       kenney: {
         trees: [],
         rocks: [],
         foliage: [],
       },
     };
-    this.decor = []; // Flat list of all decorative scene objects for easy cleanup.
+    this.decor = [];
 
-    // ── Input ──────────────────────────────────────────────────────────────────
-    this.keys = new Set(); // Currently held keyboard codes (Set avoids duplicate entries).
-    this.virtualInput = this.emptyInput(); // Input fed by the autopilot AI.
-    this.raycaster = new THREE.Raycaster();      // Ground proximity raycaster.
-    this.aimRaycaster = new THREE.Raycaster();   // Shooting aim raycaster (cursor → world).
-    // Reusable vectors to avoid per-frame allocations.
+    this.keys = new Set();
+    this.virtualInput = this.emptyInput();
+    this.raycaster = new THREE.Raycaster();
+    this.aimRaycaster = new THREE.Raycaster();
     this.tmpVector = new THREE.Vector3();
     this.tmpVector2 = new THREE.Vector3();
     this.tmpVector3 = new THREE.Vector3();
     this.tmpColor = new THREE.Color();
     this.forwardVector = new THREE.Vector3();
     this.rightVector = new THREE.Vector3();
-    this.previousBirdPosition = START_POSITION.clone(); // Last frame position for ring-crossing detection.
-    // Mouse aim state: smoothed values drive heading/pitch; target values are the raw pointer position.
+    this.previousBirdPosition = START_POSITION.clone();
     this.mouseAim = {
       x: 0,
       y: 0,
@@ -211,25 +198,24 @@ export class BirdGame {
       screenY: 0.5,
     };
 
-    // ── Course / world state ───────────────────────────────────────────────────
-    this.courseRings = [];      // Active ring-gate entities for the current stage.
-    this.clouds = [];           // Cloud group meshes (also in decor for cleanup).
-    this.groundColliders = [];  // Objects tested by the ground raycaster (terrain + nest platform).
+    this.courseRings = [];
+    this.clouds = [];
+    this.groundColliders = [];
     this.playerProjectiles = [];
     this.enemyProjectiles = [];
     this.enemies = [];
-    this.enemyIdCounter = 0; // Monotonically increasing ID used for stable enemy entity names.
+    this.enemyIdCounter = 0;
     this.courseData = {
       ringPositions: [],
       nestPosition: new THREE.Vector3(),
       enemySpawns: [],
       zenNotes: [],
     };
-    this.zenNotes = []; // Runtime zen note entities (position + mesh + collected state).
+    this.zenNotes = [];
 
-    // ── Nest / world mesh references ───────────────────────────────────────────
     this.waterMaterial = null;
     this.water = null;
+    this.waterSegments = [];
     this.terrain = null;
     this.perch = null;
     this.perchPlatform = null;
@@ -237,8 +223,6 @@ export class BirdGame {
     this.nestLip = null;
     this.nestEggs = [];
     this.guidanceArrow = null;
-    // Shared materials for player and enemy bullets; defined here to avoid
-    // recreating them every time a projectile is spawned.
     this.playerProjectileMaterial = new THREE.MeshStandardMaterial({
       color: 0xfff0a7,
       emissive: 0xffdd7f,
@@ -253,14 +237,12 @@ export class BirdGame {
       roughness: 0.26,
       metalness: 0.1,
     });
-    this.debugLastShotAt = 0; // Timestamp of the last player shot; used by debug tooling.
+    this.debugLastShotAt = 0;
 
-    // ── Feature flags ──────────────────────────────────────────────────────────
     this.features = {
-      mode: 'zen',            // 'zen' or 'challenge'
-      combatEnabled: false,   // False in zen mode until a territory moment triggers.
+      mode: 'challenge',
+      combatEnabled: true,
     };
-    // ── Runtime tuning (exposed to Tweakpane) ──────────────────────────────────
     this.tuning = {
       camera: {
         distanceBase: 13,
@@ -280,10 +262,9 @@ export class BirdGame {
         territoryDuration: 8,
       },
     };
-    this.audio = createAudioSystem(this);  // All Howler sound instances.
-    this.gamepad = createGamepadState();   // Gamepad connection + normalised input state.
+    this.audio = createAudioSystem(this);
+    this.gamepad = createGamepadState();
 
-    // Per-frame metadata written by FrameSystem; read by all downstream systems.
     this.frame = {
       delta: 0,
       elapsed: 0,
@@ -291,8 +272,6 @@ export class BirdGame {
       simulationDelta: 0,
     };
 
-    // ── Mutable game state ─────────────────────────────────────────────────────
-    // This flat object is the runtime state bag; systems read and write it directly.
     this.state = {
       stage: 1,
       stageSeed: 1,
@@ -319,8 +298,10 @@ export class BirdGame {
       errors: [],
       health: 100,
       maxHealth: 100,
+      selectedBirdId: 'parrot',
       paused: false,
       debugOpen: false,
+      startOverlayOpen: false,
       showcaseMode: false,
       skillMenuOpen: false,
       godMode: false,
@@ -366,8 +347,6 @@ export class BirdGame {
       },
     };
 
-    // ── Lighting ───────────────────────────────────────────────────────────────
-    // Directional sun light tracks the bird position so shadows are always visible.
     this.sunLight = new THREE.DirectionalLight(0xfff1bf, 2.4);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.set(2048, 2048);
@@ -381,31 +360,28 @@ export class BirdGame {
     this.sunLight.target.position.set(0, 0, 0);
     this.scene.add(this.sunLight, this.sunLight.target);
 
-    // Fill light from sky and bounce from ground to avoid pitch-black shadows.
     this.scene.add(new THREE.HemisphereLight(0xc2f0ff, 0x3e5b36, 1.15));
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.26));
 
-    // ── Bird ───────────────────────────────────────────────────────────────────
     this.bird = this.createBird();
     this.scene.add(this.bird.root);
+    this.applyBirdProfile();
 
-    // ── World / UI setup ───────────────────────────────────────────────────────
     this.buildSky();
     this.buildWorld();
     this.bindUi();
     this.bindEvents();
     this.installDebugHooks();
-    loadGamepadRemap(this);              // Restore saved button remap from localStorage.
-    this.tuningPane = createTuningPane(this); // Tweakpane debug sliders.
-    this.onResize();      // Set correct aspect ratio and renderer size immediately.
-    this.resetMission();  // Build the first stage course and place the bird.
-    this.installVisualUpgrades(); // Start async asset loading (non-blocking).
+    loadGamepadRemap(this);
+    this.tuningPane = createTuningPane(this);
+    this.onResize();
+    this.resetMission();
+    this.installVisualUpgrades();
+    this.openStartOverlay(true);
 
-    // ── Engine ─────────────────────────────────────────────────────────────────
     this.engine = new GameEngine(this, createDefaultSystems());
   }
 
-  /** Returns a zeroed input state object used when autopilot is off and no input exists. */
   emptyInput() {
     return {
       forward: false,
@@ -417,11 +393,6 @@ export class BirdGame {
     };
   }
 
-  /**
-   * Creates the procedural sky dome using a custom gradient shader.
-   * A separate sun mesh is placed at a fixed world-space position for visual reference.
-   * The shader blends three colours: zenith (top), horizon, and nadir (bottom).
-   */
   buildSky() {
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(1100, 48, 24),
@@ -471,11 +442,6 @@ export class BirdGame {
     this.scene.add(sky, sun);
   }
 
-  /**
-   * Builds the static world geometry: terrain mesh, water plane, trees, rocks,
-   * foliage, clouds, and the nest tree. The terrain is also added to groundColliders
-   * so raycasts detect it.
-   */
   buildWorld() {
     this.terrain = this.createTerrain();
     this.scene.add(this.terrain);
@@ -491,32 +457,22 @@ export class BirdGame {
       emissiveIntensity: 0.18,
     });
 
-    this.water = new THREE.Mesh(
-      new THREE.PlaneGeometry(980, 300, 1, 1),
-      this.waterMaterial,
-    );
-    this.water.rotation.x = -Math.PI / 2;
-    this.water.position.set(90, 7.2, 12);
-    this.water.receiveShadow = true;
-    this.scene.add(this.water);
+    this.createRiver();
 
     this.createTrees();
     this.createRocks();
     this.createFoliage();
     this.createClouds();
     this.createNest();
+    this.createCliffSupports();
     this.createGuidanceArrow();
   }
 
-  /**
-   * Kicks off async loading of all optional visual assets (HDRI, character models,
-   * Kenney props). Each loader is independent; failures are silently ignored so
-   * the game works without any external assets.
-   */
   installVisualUpgrades() {
     this.loadSceneEnvironment();
     this.loadPlayerModel();
     this.loadEnemyModel();
+    this.loadQuaterniusModels();
     this.loadKenneyModels();
   }
 
@@ -539,7 +495,7 @@ export class BirdGame {
       });
       if (!gltf) return;
       this.models.player = gltf;
-      this.applyPlayerModel();
+      this.refreshPlayerAvatar();
     } catch {
       // Optional: fallback to procedural bird.
     }
@@ -559,9 +515,41 @@ export class BirdGame {
     }
   }
 
-  /** Loads all Kenney decorative prop GLBs in parallel, then rebuilds decor if any loaded. */
+  async loadQuaterniusModels() {
+    const collect = async (url) => {
+      try {
+        const gltf = await this.assets.loadGlb(url);
+        return gltf?.scene ? gltf.scene : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const [trees, deadTrees, rocks, pathRocks, foliage] = await Promise.all([
+      Promise.all(ASSET_URLS.quaternius.trees.map(collect)),
+      Promise.all(ASSET_URLS.quaternius.deadTrees.map(collect)),
+      Promise.all(ASSET_URLS.quaternius.rocks.map(collect)),
+      Promise.all(ASSET_URLS.quaternius.pathRocks.map(collect)),
+      Promise.all(ASSET_URLS.quaternius.foliage.map(collect)),
+    ]);
+
+    this.models.quaternius.trees = trees.filter(Boolean);
+    this.models.quaternius.deadTrees = deadTrees.filter(Boolean);
+    this.models.quaternius.rocks = rocks.filter(Boolean);
+    this.models.quaternius.pathRocks = pathRocks.filter(Boolean);
+    this.models.quaternius.foliage = foliage.filter(Boolean);
+
+    const hasAny = this.models.quaternius.trees.length
+      + this.models.quaternius.deadTrees.length
+      + this.models.quaternius.rocks.length
+      + this.models.quaternius.pathRocks.length
+      + this.models.quaternius.foliage.length > 0;
+    if (!hasAny) return;
+
+    this.rebuildDecor();
+  }
+
   async loadKenneyModels() {
-    // collect() loads a single GLB URL, returning null on failure.
     const collect = async (url) => {
       try {
         const gltf = await this.assets.loadGlb(url);
@@ -587,27 +575,21 @@ export class BirdGame {
     this.rebuildDecor();
   }
 
-  /** Removes all decor objects and rebuilds them using the newly loaded Kenney models. */
   rebuildDecor() {
     this.clearDecor();
     this.createTrees();
     this.createRocks();
     this.createFoliage();
     this.createClouds();
+    this.createCliffSupports();
   }
 
-  /** Removes all decor scene objects and resets the tracking arrays. */
   clearDecor() {
     this.decor.forEach((entry) => this.scene.remove(entry));
     this.decor = [];
     this.clouds = [];
   }
 
-  /**
-   * Normalises a loaded GLTF model to a target world-space size by computing its
-   * bounding box and applying a uniform scale factor. Also centres and offsets
-   * the model on Y so it sits correctly relative to its parent.
-   */
   normalizeVisual(model, { targetSize = 5, yRotation = Math.PI, yOffset = 0 } = {}) {
     model.rotation.set(0, yRotation, 0);
     model.updateMatrixWorld(true);
@@ -623,10 +605,6 @@ export class BirdGame {
     model.updateMatrixWorld(true);
   }
 
-  /**
-   * Clones a prop template, applies position/scale/rotation, enables shadows,
-   * and snaps the base to the terrain by zeroing out the bounding-box minimum Y.
-   */
   spawnPropFromTemplate(template, { position, scale = 1, rotationY = 0 } = {}) {
     const clone = template.clone(true);
     clone.rotation.y = rotationY;
@@ -648,19 +626,131 @@ export class BirdGame {
     return clone;
   }
 
-  /**
-   * Attaches the loaded player GLTF model to the bird root, hides the procedural
-   * visual group, and sets up an AnimationMixer for the first clip.
-   */
+  getSelectedBirdProfile() {
+    return BIRD_PROFILES[this.state.selectedBirdId] ?? BIRD_PROFILES.parrot;
+  }
+
+  selectBird(birdId = 'parrot') {
+    const nextId = BIRD_PROFILES[birdId] ? birdId : 'parrot';
+    if (this.state.selectedBirdId === nextId) {
+      this.updateBirdSelectionUi();
+      return;
+    }
+
+    this.state.selectedBirdId = nextId;
+    this.applyBirdProfile();
+    this.updateBirdSelectionUi();
+    this.updateHud();
+  }
+
+  updateBirdSelectionUi() {
+    if (!this.ui.birdButtons?.length) return;
+    const profile = this.getSelectedBirdProfile();
+    this.ui.birdButtons.forEach((button) => {
+      const active = button.dataset.bird === profile.id;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    if (this.ui.selectedBirdName) this.ui.selectedBirdName.textContent = profile.name;
+    if (this.ui.selectedBirdSummary) this.ui.selectedBirdSummary.textContent = profile.summary;
+  }
+
+  openStartOverlay(forceValue) {
+    const wantsOpen = typeof forceValue === 'boolean' ? forceValue : !this.state.startOverlayOpen;
+    this.state.startOverlayOpen = wantsOpen;
+    this.ui.startOverlay?.classList.toggle('is-hidden', !wantsOpen);
+    if (wantsOpen) this.keys.clear();
+    this.updateBirdSelectionUi();
+  }
+
+  startRun(selectedBirdId = this.state.selectedBirdId) {
+    this.selectBird(selectedBirdId);
+    this.openStartOverlay(false);
+    this.resetMouseAim();
+    this.keys.clear();
+    this.updateHud();
+  }
+
+  applyBirdProfile() {
+    const profile = this.getSelectedBirdProfile();
+    const shape = profile.proceduralShape;
+    const palette = profile.palette;
+
+    this.bird.materials.plumage.color.set(palette.plumage);
+    this.bird.materials.chest.color.set(palette.chest);
+    this.bird.materials.beak.color.set(palette.beak);
+    this.bird.materials.eye.color.set(palette.eye);
+
+    this.bird.visual.scale.setScalar(shape.visualScale);
+    this.bird.body.scale.fromArray(shape.bodyScale);
+    this.bird.chestPatch.scale.fromArray(shape.chestScale);
+    this.bird.chestPatch.position.fromArray(shape.chestPosition);
+    this.bird.head.scale.fromArray(shape.headScale);
+    this.bird.head.position.fromArray(shape.headPosition);
+    this.bird.beakMesh.scale.fromArray(shape.beakScale);
+    this.bird.beakMesh.position.fromArray(shape.beakPosition);
+    this.bird.tail.scale.fromArray(shape.tailScale);
+    this.bird.tail.position.fromArray(shape.tailPosition);
+    this.bird.leftWingPivot.position.fromArray(shape.leftWingPivot);
+    this.bird.rightWingPivot.position.set(-shape.leftWingPivot[0], shape.leftWingPivot[1], shape.leftWingPivot[2]);
+    this.bird.leftWing.scale.fromArray(shape.wingScale);
+    this.bird.leftWing.position.fromArray(shape.wingPosition);
+    this.bird.rightWing.scale.fromArray(shape.wingScale);
+    this.bird.rightWing.position.set(-shape.wingPosition[0], shape.wingPosition[1], shape.wingPosition[2]);
+
+    this.refreshPlayerAvatar();
+  }
+
+  clearPlayerModel() {
+    if (!this.bird.model) return;
+    this.bird.root.remove(this.bird.model);
+    this.bird.model = null;
+    this.bird.mixer = null;
+  }
+
+  tintPlayerMaterial(material, tintHex) {
+    if (!material?.clone) return material;
+    const clone = material.clone();
+    if (clone.color) {
+      clone.color.multiply(new THREE.Color(tintHex));
+    }
+    clone.needsUpdate = true;
+    return clone;
+  }
+
+  refreshPlayerAvatar() {
+    const profile = this.getSelectedBirdProfile();
+    const wantsModel = profile.modelStrategy === 'sharedModel' && Boolean(this.models.player);
+
+    this.clearPlayerModel();
+    this.bird.visual.visible = !wantsModel;
+    if (wantsModel) {
+      this.applyPlayerModel();
+    }
+  }
+
   applyPlayerModel() {
-    if (!this.models.player || this.bird.model) return;
+    if (!this.models.player) return;
+    const profile = this.getSelectedBirdProfile();
 
     const model = this.assets.cloneSkinned(this.models.player.scene);
-    this.normalizeVisual(model, { targetSize: 5.2, yRotation: 0, yOffset: -0.6 });
+    this.normalizeVisual(model, {
+      targetSize: profile.stats.modelTargetSize,
+      yRotation: 0,
+      yOffset: profile.stats.modelYOffset,
+    });
+    model.scale.multiplyScalar(profile.stats.modelScaleMultiplier);
     model.traverse((node) => {
       if (node.isMesh) {
         node.castShadow = true;
         node.receiveShadow = false;
+        if (node.material) {
+          if (Array.isArray(node.material)) {
+            node.material = node.material.map((material) => this.tintPlayerMaterial(material, profile.palette.tint));
+          } else {
+            node.material = this.tintPlayerMaterial(node.material, profile.palette.tint);
+          }
+        }
       }
     });
 
@@ -675,16 +765,11 @@ export class BirdGame {
     }
   }
 
-  /** Applies the enemy model to all currently spawned enemies. Called after async load. */
   applyEnemyModelToAll() {
     if (!this.models.enemy) return;
     this.enemies.forEach((enemy) => this.applyEnemyModel(enemy));
   }
 
-  /**
-   * Attaches the loaded enemy GLTF model to an individual enemy entity, applies
-   * a reddish tint to all mesh materials, and starts the animation clip.
-   */
   applyEnemyModel(enemy) {
     if (!enemy || enemy.model || !this.models.enemy) return;
 
@@ -714,10 +799,6 @@ export class BirdGame {
     }
   }
 
-  /**
-   * Clones a material and applies a reddish colour multiply and emissive tint
-   * so GLTF enemy models look visually distinct from the player bird.
-   */
   tintEnemyMaterial(material) {
     if (!material || !material.clone) return material;
     const clone = material.clone();
@@ -731,11 +812,60 @@ export class BirdGame {
     clone.needsUpdate = true;
     return clone;
   }
-  /**
-   * Generates the heightmap-based terrain mesh with per-vertex colour.
-   * The valley shape is defined by heightAt(); colour is derived from elevation
-   * using HSL interpolation between sand and fertile-green tones.
-   */
+
+  createRiver() {
+    this.waterSegments.forEach((segment) => this.scene.remove(segment));
+    this.waterSegments = [];
+
+    for (let index = 0; index < VALLEY_LAYOUT.river.length - 1; index += 1) {
+      const start = VALLEY_LAYOUT.river[index];
+      const end = VALLEY_LAYOUT.river[index + 1];
+      const startVec = new THREE.Vector3(start.x, start.y, start.z);
+      const endVec = new THREE.Vector3(end.x, end.y, end.z);
+      const direction = endVec.clone().sub(startVec);
+      const length = direction.length();
+      const width = lerp(start.width, end.width, 0.5);
+      const mid = startVec.clone().lerp(endVec, 0.5);
+
+      const segment = new THREE.Mesh(
+        new THREE.PlaneGeometry(length, width, 1, 1),
+        this.waterMaterial,
+      );
+      segment.rotation.x = -Math.PI / 2;
+      segment.rotation.z = Math.atan2(direction.z, direction.x);
+      segment.position.copy(mid);
+      segment.receiveShadow = true;
+      segment.userData.baseY = mid.y;
+      this.scene.add(segment);
+      this.waterSegments.push(segment);
+    }
+
+    this.water = this.waterSegments[0] ?? null;
+  }
+
+  createCliffSupports() {
+    const rockTemplates = this.models.quaternius.rocks.length > 0
+      ? this.models.quaternius.rocks
+      : this.models.kenney.rocks;
+    if (rockTemplates.length <= 0) return;
+
+    VALLEY_LAYOUT.supports.forEach((anchor, index) => {
+      const template = rockTemplates[index % rockTemplates.length];
+      for (let stackIndex = 0; stackIndex < 3; stackIndex += 1) {
+        const offset = stackIndex * 5.6;
+        this.spawnPropFromTemplate(template, {
+          position: new THREE.Vector3(
+            anchor.x + (stackIndex - 1) * 3.2,
+            anchor.y + offset,
+            anchor.z + (stackIndex % 2 === 0 ? -2.2 : 2.2),
+          ),
+          scale: 3.6 - stackIndex * 0.5,
+          rotationY: seed(index * 7 + stackIndex) * Math.PI * 2,
+        });
+      }
+    });
+  }
+
   createTerrain() {
     const geometry = new THREE.PlaneGeometry(1050, 1050, 220, 220);
     geometry.rotateX(-Math.PI / 2);
@@ -750,12 +880,19 @@ export class BirdGame {
 
       positions.setY(index, y);
 
-      const fertile = clamp((y - 4) / 52, 0, 1);
-      this.tmpColor
-        .setHSL(lerp(0.27, 0.18, fertile), lerp(0.46, 0.58, fertile), lerp(0.3, 0.53, fertile));
+      const river = sampleRiverState(x);
+      const riverDistance = Math.abs(z - river.z);
+      const fertile = clamp((y - 5) / 68, 0, 1);
+      this.tmpColor.setHSL(
+        lerp(0.29, 0.18, fertile),
+        lerp(0.36, 0.54, fertile),
+        lerp(0.32, 0.52, fertile),
+      );
 
-      if (y < 10) {
-        this.tmpColor.lerp(new THREE.Color(0xd6c792), 0.45);
+      if (riverDistance < river.width * 0.7) {
+        this.tmpColor.lerp(new THREE.Color(0xcab887), 0.58);
+      } else if (y > 42) {
+        this.tmpColor.lerp(new THREE.Color(0x887967), 0.38);
       }
 
       colors[index * 3] = this.tmpColor.r;
@@ -777,27 +914,10 @@ export class BirdGame {
     return mesh;
   }
 
-  /**
-   * Returns the terrain height at world-space (x, z) using the same formula
-   * applied to the geometry vertices. Used for snapping objects to the ground
-   * without raycasting.
-   * The valley centre is a sinusoidal corridor; ridges rise at the map edges.
-   */
   heightAt(x, z) {
-    const valleyCenter = Math.sin((x + 120) * 0.012) * 44 + Math.sin(x * 0.023) * 10;
-    const valleyDistance = Math.abs(z - valleyCenter);
-    const valleyLift = Math.min((valleyDistance * valleyDistance) / 180, 34);
-    const rolling = Math.sin(x * 0.017) * 10 + Math.cos(z * 0.019) * 7 + Math.sin((x + z) * 0.013) * 5;
-    const shelves = Math.sin(x * 0.05) * Math.cos(z * 0.04) * 2.4;
-    const ridge = clamp((Math.abs(x) - 320) * 0.08, 0, 18);
-    return rolling + shelves + valleyLift - 5 + ridge;
+    return authoredHeightAt(x, z);
   }
 
-  /**
-   * Constructs the procedural player bird object: a Group hierarchy of coloured
-   * SphereGeometry parts (body, head, wings, beak, tail, eyes).
-   * Returns a plain object containing the root Group and all animatable sub-nodes.
-   */
   createBird() {
     const root = new THREE.Group();
     root.rotation.order = 'YXZ';
@@ -879,12 +999,33 @@ export class BirdGame {
       root,
       visual,
       body,
+      chestPatch,
       tail,
       head,
+      beakMesh,
+      eyeLeft,
+      eyeRight,
       leftWingPivot,
+      rightWing,
+      leftWing,
       rightWingPivot,
+      materials: {
+        plumage,
+        chest,
+        beak,
+        eye: dark,
+      },
       model: null,
       mixer: null,
+      shapeDefaults: {
+        chestPosition: chestPatch.position.clone(),
+        headPosition: head.position.clone(),
+        beakPosition: beakMesh.position.clone(),
+        tailPosition: tail.position.clone(),
+        leftWingPivot: leftWingPivot.position.clone(),
+        rightWingPivot: rightWingPivot.position.clone(),
+        wingPosition: leftWing.position.clone(),
+      },
       speed: 24,
       heading: 0.62,
       pitch: 0,
@@ -899,7 +1040,6 @@ export class BirdGame {
     };
   }
 
-  /** Removes all ring meshes from the scene and clears zen note objects. */
   clearCourseMeshes() {
     this.courseRings.forEach((ring) => this.scene.remove(ring.group));
     this.courseRings = [];
@@ -918,7 +1058,55 @@ export class BirdGame {
     spawnEnemyWaveSystem(this, mode);
   }
 
+  spawnClusteredProps(clusters, templates, {
+    spreadScale = 1,
+    scaleMin = 1,
+    scaleMax = 1,
+    yLift = 0,
+  } = {}) {
+    if (templates.length <= 0) return;
+
+    clusters.forEach((cluster, clusterIndex) => {
+      for (let index = 0; index < cluster.count; index += 1) {
+        const scatterSeed = clusterIndex * 200 + index * 13;
+        const x = cluster.x + (seed(scatterSeed + 1) - 0.5) * cluster.spreadX * spreadScale;
+        const z = cluster.z + (seed(scatterSeed + 2) - 0.5) * cluster.spreadZ * spreadScale;
+        const y = this.heightAt(x, z) + yLift;
+        const rotationY = seed(scatterSeed + 3) * Math.PI * 2;
+        const scale = lerp(scaleMin, scaleMax, seed(scatterSeed + 4));
+        const template = templates[(clusterIndex + index) % templates.length];
+        this.spawnPropFromTemplate(template, {
+          position: new THREE.Vector3(x, y, z),
+          scale,
+          rotationY,
+        });
+      }
+    });
+  }
+
   createTrees() {
+    if (this.models.quaternius.trees.length > 0 || this.models.quaternius.deadTrees.length > 0) {
+      const mixed = [
+        ...this.models.quaternius.trees,
+        ...this.models.quaternius.deadTrees,
+      ];
+      VALLEY_LAYOUT.treeGroves.forEach((grove, groveIndex) => {
+        const familyTemplates = grove.family === 'dead'
+          ? this.models.quaternius.deadTrees
+          : grove.family === 'twisted'
+            ? this.models.quaternius.trees.filter((_, index) => index >= 4)
+            : grove.family === 'pine'
+              ? this.models.quaternius.trees.filter((_, index) => index >= 3)
+              : mixed;
+        const templates = familyTemplates.length > 0 ? familyTemplates : mixed;
+        this.spawnClusteredProps([{ ...grove }], templates, {
+          scaleMin: grove.family === 'dead' ? 2.3 : 2.8,
+          scaleMax: grove.family === 'pine' ? 4.8 : 4.2,
+        });
+      });
+      return;
+    }
+
     if (this.models.kenney.trees.length > 0) {
       for (let index = 0; index < 110; index += 1) {
         const x = lerp(-480, 480, seed(index * 2 + 1));
@@ -988,6 +1176,29 @@ export class BirdGame {
   }
 
   createRocks() {
+    if (this.models.quaternius.rocks.length > 0) {
+      this.spawnClusteredProps(VALLEY_LAYOUT.rockFields, this.models.quaternius.rocks, {
+        scaleMin: 1.6,
+        scaleMax: 3.8,
+      });
+      this.spawnClusteredProps(
+        VALLEY_LAYOUT.riverRocks.map((entry) => ({
+          x: entry.x,
+          z: entry.z,
+          spreadX: 18,
+          spreadZ: 10,
+          count: 3,
+        })),
+        this.models.quaternius.pathRocks.length > 0 ? this.models.quaternius.pathRocks : this.models.quaternius.rocks,
+        {
+          scaleMin: 1.1,
+          scaleMax: 1.9,
+          yLift: 0.2,
+        },
+      );
+      return;
+    }
+
     if (this.models.kenney.rocks.length > 0) {
       for (let index = 0; index < 45; index += 1) {
         const x = lerp(-420, 460, seed(index * 3 + 8));
@@ -1030,6 +1241,24 @@ export class BirdGame {
   }
 
   createFoliage() {
+    if (this.models.quaternius.foliage.length > 0) {
+      this.spawnClusteredProps(VALLEY_LAYOUT.meadowPatches, this.models.quaternius.foliage, {
+        scaleMin: 1.2,
+        scaleMax: 2.8,
+      });
+      if (this.models.kenney.foliage.length > 0) {
+        this.spawnClusteredProps(
+          VALLEY_LAYOUT.meadowPatches.map((patch) => ({ ...patch, count: Math.max(4, Math.round(patch.count * 0.2)) })),
+          this.models.kenney.foliage,
+          {
+            scaleMin: 0.9,
+            scaleMax: 1.6,
+          },
+        );
+      }
+      return;
+    }
+
     if (this.models.kenney.foliage.length <= 0) return;
 
     for (let index = 0; index < 160; index += 1) {
@@ -1085,11 +1314,6 @@ export class BirdGame {
     }
   }
 
-  /**
-   * Creates all torus ring-gate meshes from game.courseData.ringPositions and adds
-   * them to game.courseRings. Each ring faces its successor to define the normal
-   * plane used for crossing detection.
-   */
   createCourse() {
     const ringMaterial = new THREE.MeshStandardMaterial({
       color: 0xf6b84b,
@@ -1140,11 +1364,6 @@ export class BirdGame {
     }
   }
 
-  /**
-   * Builds the nest tree: a procedural trunk + branches + leaf canopy with a
-   * platform disc on top. The glow ring and eggs are hidden by default until
-   * the finale is activated.
-   */
   createNest() {
     const trunkMaterial = new THREE.MeshStandardMaterial({
       color: 0x7a5437,
@@ -1236,11 +1455,6 @@ export class BirdGame {
     this.scene.add(this.perch);
   }
 
-  /**
-   * Creates a camera-space HUD arrow that points toward the current objective.
-   * Rendered with renderOrder 999 and no depth test so it is always visible.
-   * The arrow is attached to the camera so it stays fixed in screen space.
-   */
   createGuidanceArrow() {
     const arrowMaterial = new THREE.MeshBasicMaterial({
       color: 0xeaf6ff,
@@ -1309,27 +1523,17 @@ export class BirdGame {
     return getDebugStateSystem(this);
   }
 
-  /**
-   * Resets to stage 1 with no skills and full mission reset.
-   * Called from the "Fly Again" button and mode switches.
-   */
   resetMission() {
     this.state.stage = 1;
     this.state.skillPoints = 0;
-    this.state.maxHealth = 100;
     Object.keys(this.state.unlockedSkills).forEach((skill) => {
       this.state.unlockedSkills[skill] = false;
     });
+    this.applyBirdProfile();
     this.resetStage(true);
   }
 
-  /**
-   * Resets all per-stage state: progress counters, timers, combat state, bird
-   * physics, and projectiles. Rebuilds the course and zen notes.
-   * @param {boolean} fullReset - If true, also resets the stage seed (mission restart).
-   */
   resetStage(fullReset = false) {
-    // Reset combat / feature flags to their per-mode defaults.
     this.features.combatEnabled = this.features.mode === 'challenge';
     this.state.ringsCleared = 0;
     this.state.feathers = 0;
@@ -1368,14 +1572,13 @@ export class BirdGame {
     if (fullReset) {
       this.state.stageSeed = 1;
     }
+    this.applyBirdProfile();
     this.getStats();
     this.state.health = this.state.maxHealth;
     this.buildStageCourse();
     this.buildZenDiscovery();
     this.setNestFinale(false);
 
-    // Place the bird at the start position and lock it in a hover until the player
-    // presses a movement key for the first time (takeoff lock).
     this.bird.root.position.copy(START_POSITION);
     this.state.awaitingTakeoff = true;
     this.state.spawnHoverY = this.bird.root.position.y;
@@ -1402,19 +1605,18 @@ export class BirdGame {
     this.ui.finishOverlay.classList.add('is-hidden');
     this.ui.pauseOverlay.classList.add('is-hidden');
     this.ui.skillOverlay.classList.add('is-hidden');
+    if (this.state.startOverlayOpen) {
+      this.ui.startOverlay.classList.remove('is-hidden');
+    }
+    this.updateBirdSelectionUi();
     this.updateHud();
   }
 
-  /** Returns a fresh stats snapshot from the stats module (delegates, no logic here). */
   getStats() {
     return getStats(this);
   }
 
-  /**
-   * Switches the game mode ('zen' or 'challenge'), resets combat state, and
-   * triggers a full mission restart so the new mode's rules apply immediately.
-   */
-  setMode(mode = 'zen') {
+  setMode(mode = 'challenge') {
     const nextMode = mode === 'challenge' ? 'challenge' : 'zen';
     this.features.mode = nextMode;
     this.features.combatEnabled = nextMode === 'challenge';
@@ -1422,7 +1624,6 @@ export class BirdGame {
     this.updateHud();
   }
 
-  /** Starts the Three.js animation loop (delegates to GameEngine). */
   start() {
     this.engine.start();
   }
@@ -1686,11 +1887,6 @@ export class BirdGame {
     saveGamepadRemap(this);
   }
 
-  /**
-   * Activates a temporary territory combat moment in zen mode.
-   * An enemy spawns near the player and pursues them for a fixed duration.
-   * After the territory timer expires the cooldown system clears combat automatically.
-   */
   spawnTerritoryMoment() {
     this.state.territoryActive = true;
     this.state.territoryTimer = this.tuning.zen.territoryDuration;
@@ -1700,11 +1896,6 @@ export class BirdGame {
     this.updateHud();
   }
 
-  /**
-   * Sends a radial wind pulse that pushes nearby enemies away.
-   * Returns false if the pulse is on cooldown. Also used as the zen-mode
-   * "fire" action (left-click / Q key) since shooting is disabled in zen.
-   */
   triggerWindPulse() {
     const stats = this.getStats();
     if (this.state.windPulseCooldown > 0) return false;
@@ -1716,11 +1907,6 @@ export class BirdGame {
     return true;
   }
 
-  /**
-   * Toggles showcase mode: freezes bird movement, spawns enemies in an orbit
-   * formation with disabled firing, and enters an orbital camera view.
-   * Used for taking promotional screenshots or testing model loading.
-   */
   // Debug-only showcase mode keeps both bird models framed for artifact capture.
   toggleShowcaseMode(forceValue) {
     const nextValue = typeof forceValue === 'boolean' ? forceValue : !this.state.showcaseMode;
@@ -1767,11 +1953,6 @@ export class BirdGame {
     this.updateHud();
   }
 
-  /**
-   * Autopilot AI: computes the heading / pitch corrections needed to fly toward
-   * the next ring (or the nest when all rings are cleared) and populates
-   * virtualInput so the normal flight system handles the actual movement.
-   */
   updateAutopilot(delta) {
     this.virtualInput = this.emptyInput();
     if (this.state.paused) return;
@@ -1815,11 +1996,6 @@ export class BirdGame {
 
   }
 
-  /**
-   * Instantly teleports the bird through every ring and lands it on the nest –
-   * used by integration tests to reach the completion state without waiting for
-   * real flight time.
-   */
   runScriptedCompletion() {
     while (this.state.activeRingIndex < this.state.totalRings) {
       const ring = this.courseRings[this.state.activeRingIndex];
@@ -1835,7 +2011,6 @@ export class BirdGame {
     if (this.state.skillPoints > 0) this.applySkill('rapidBeak');
   }
 
-  /** Handles window resize: updates camera aspect ratio and renderer size. */
   onResize() {
     const width = this.ui.root.clientWidth;
     const height = this.ui.root.clientHeight;

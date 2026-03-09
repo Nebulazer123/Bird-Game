@@ -85,6 +85,19 @@ export function installDebugHooks(game) {
       game.releaseTakeoffLock();
       return game.runScriptedCompletion();
     },
+    selectBird: (birdId = 'parrot') => {
+      game.selectBird(birdId);
+    },
+    startRun: (birdId) => {
+      if (birdId) game.selectBird(birdId);
+      game.startRun();
+    },
+    getValleyStatus: () => ({
+      quaterniusTrees: game.models.quaternius.trees.length,
+      quaterniusRocks: game.models.quaternius.rocks.length,
+      quaterniusFoliage: game.models.quaternius.foliage.length,
+      decorCount: game.decor.length,
+    }),
   };
 
   /**
@@ -94,6 +107,7 @@ export function installDebugHooks(game) {
   window.render_game_to_text = () => JSON.stringify({
     mode: game.state.showcaseMode ? 'showcase' : game.state.completed ? 'complete' : game.state.paused ? 'paused' : game.state.skillMenuOpen ? 'skills' : 'flight',
     sliceMode: game.features.mode,
+    selectedBirdId: game.state.selectedBirdId,
     coordinateSystem: 'x east-west, y up, z north-south',
     mission: game.ui.mission.textContent,
     bird: {
@@ -177,6 +191,7 @@ export function getDebugState(game) {
     ready: true,
     stage: game.state.stage,
     mode: game.features.mode,
+    selectedBirdId: game.state.selectedBirdId,
     ringsCleared: game.state.ringsCleared,
     totalRings: game.state.totalRings,
     feathers: game.state.feathers,

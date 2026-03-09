@@ -1,42 +1,32 @@
-/**
- * @module courseBuilder
- * Generates and places the ring-gate course layout for each stage.
- * Ring positions are computed deterministically from the stage seed so every
- * play of the same stage looks identical, while different stages feel fresh.
- * Also positions the nest tree at the end of the course.
- */
 import * as THREE from 'three';
 import {
   BASE_RING_COUNT,
   RINGS_PER_STAGE,
   START_POSITION,
-  WORLD_LIMIT,
 } from '../core/config.js';
 import { seed } from '../core/math.js';
+import { VALLEY_LAYOUT, sampleFlightLane } from '../presentation/valleyLayout.js';
 
 const lerp = THREE.MathUtils.lerp;
 
-/**
- * Builds the list of ring world-space positions for the given stage and stores
- * them in game.courseData. Also computes the nest landing position and the three
- * corner enemy spawn points used in the finale wave.
- */
 export function generateStageCourse(game, stage = game.state.stage) {
   const ringCount = BASE_RING_COUNT + (stage - 1) * RINGS_PER_STAGE;
-  const seedBase = stage * 97.17; // Unique seed per stage keeps layouts distinct.
+  const seedBase = stage * 97.17;
   const ringPositions = [];
   let previous = START_POSITION.clone();
 
   for (let index = 0; index < ringCount; index += 1) {
     const progress = (index + 1) / (ringCount + 1);
-    // X sweeps roughly west to east; Z snakes in a sinusoidal path for variety.
-    const x = lerp(-70, 410, progress) + (seed(seedBase + index * 3.1) - 0.5) * 34;
-    const z = Math.sin(progress * Math.PI * (2.2 + seed(seedBase + index * 5.7))) * 44
-      + Math.cos(progress * Math.PI * 3.6) * 18
-      + (seed(seedBase + index * 8.4) - 0.5) * 22;
-    const y = 34 + progress * 78 + seed(seedBase + index * 2.4) * 18;
+    const guideX = lerp(START_POSITION.x + 36, VALLEY_LAYOUT.nestPeak.x - 38, progress);
+    const lane = sampleFlightLane(guideX);
+    const lateralSwing = (seed(seedBase + index * 5.7) - 0.5) * lane.width * 0.72;
+    const x = guideX + (seed(seedBase + index * 3.1) - 0.5) * 18;
+    const z = lane.z + lateralSwing;
+    const y = Math.max(
+      lane.y + progress * 16 + seed(seedBase + index * 2.4) * 14,
+      game.heightAt(x, z) + 18 + progress * 10,
+    );
     const point = new THREE.Vector3(x, y, z);
-    // Push adjacent rings apart so they are never trivially close together.
     if (point.distanceTo(previous) < 26) {
       point.x += 18;
       point.y += 10;
@@ -46,26 +36,26 @@ export function generateStageCourse(game, stage = game.state.stage) {
   }
 
   const lastRing = ringPositions[ringPositions.length - 1];
-  const nestPosition = lastRing.clone().add(new THREE.Vector3(54, 12, 30 + (seed(seedBase + 999) - 0.5) * 28));
-  // Raise the nest well above the terrain so landing is unambiguous.
-  nestPosition.y = Math.max(nestPosition.y, game.heightAt(nestPosition.x, nestPosition.z) + 88);
-  const cornerHeight = 74 + stage * 2;
+  const nestPosition = new THREE.Vector3(
+    VALLEY_LAYOUT.nestPeak.x,
+    VALLEY_LAYOUT.nestPeak.y + stage * 3,
+    VALLEY_LAYOUT.nestPeak.z + (seed(seedBase + 999) - 0.5) * 12,
+  );
+  nestPosition.y = Math.max(nestPosition.y, game.heightAt(nestPosition.x, nestPosition.z) + 62);
   game.courseData = {
     ringPositions,
     nestPosition,
-    enemySpawns: [
-      new THREE.Vector3(-WORLD_LIMIT + 82, cornerHeight, -WORLD_LIMIT + 88),
-      new THREE.Vector3(WORLD_LIMIT - 92, cornerHeight + 8, -WORLD_LIMIT + 76),
-      new THREE.Vector3(WORLD_LIMIT - 96, cornerHeight + 5, WORLD_LIMIT - 84),
-    ],
+    enemySpawns: VALLEY_LAYOUT.supports.map((anchor, index) => (
+      new THREE.Vector3(
+        anchor.x + index * 8,
+        Math.max(anchor.y + 8, game.heightAt(anchor.x, anchor.z) + 16),
+        anchor.z + (index - 1) * 6,
+      )
+    )),
   };
   game.state.totalRings = ringCount;
 }
 
-/**
- * Generates the course data, builds ring meshes, repositions the nest,
- * and spawns the appropriate enemy wave for the current mode.
- */
 export function buildStageCourse(game) {
   game.clearCourseMeshes();
   generateStageCourse(game, game.state.stage);
@@ -79,11 +69,6 @@ export function buildStageCourse(game) {
   }
 }
 
-/**
- * Moves the nest tree group to the correct world-space position for the current
- * stage, snapping the base to the terrain height and raising the platform and
- * eggs to their correct relative offsets.
- */
 export function positionNest(game) {
   const { nestPosition } = game.courseData;
   const baseY = game.heightAt(nestPosition.x, nestPosition.z);
