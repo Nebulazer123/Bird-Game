@@ -27,20 +27,20 @@ app.innerHTML = `
     <section class="hud top-bar" data-role="top-bar">
       <div class="title-block" data-role="title-block">
         <p class="eyebrow">Featherwind Valley</p>
-        <h1>Challenge Flight</h1>
-        <p class="subtitle">Clear the wind gates, earn upgrades, and secure the Sun Nest.</p>
+        <h1>Zen Soarer Slice</h1>
+        <p class="subtitle">Follow warm winds, collect songs, and let challenge routes stay optional.</p>
       </div>
       <div class="stat-strip">
         <article class="glass-card compact objective-card" data-role="objective-chip">
-          <span class="label" data-role="mode-badge">Challenge Flight</span>
-          <strong data-role="mission">Gate 1 / 12</strong>
-          <p class="chip-copy" data-role="objective-hint">Ride the next wind gate cleanly.</p>
+          <span class="label" data-role="mode-badge">Zen Soarer</span>
+          <strong data-role="mission">Notes 0 / 9</strong>
+          <p class="chip-copy" data-role="objective-hint">Drift toward the next song note.</p>
         </article>
-        <article class="glass-card compact note-card is-hidden" data-role="note-card">
+        <article class="glass-card compact note-card" data-role="note-card">
           <span class="label">Songs</span>
           <strong data-role="note-progress">0 / 9</strong>
         </article>
-        <article class="glass-card compact ring-card" data-role="ring-card">
+        <article class="glass-card compact ring-card is-hidden" data-role="ring-card">
           <span class="label">Gates</span>
           <strong data-role="rings">0 / 12</strong>
         </article>
@@ -48,7 +48,7 @@ app.innerHTML = `
           <span class="label">Feathers</span>
           <strong data-role="feathers">0</strong>
         </article>
-        <article class="glass-card compact skill-card" data-role="skill-card">
+        <article class="glass-card compact skill-card is-hidden" data-role="skill-card">
           <span class="label">Skill Points</span>
           <strong data-role="skills">0</strong>
         </article>
@@ -83,7 +83,7 @@ app.innerHTML = `
         <span class="label">Status</span>
         <p><strong data-role="health">100 / 100</strong> HP</p>
         <p data-role="aim">Mouse aim active</p>
-        <p data-role="enemy">Hunter reforming</p>
+        <p data-role="enemy">Calm air</p>
         <p data-role="control-hint">Controller: connect to enable.</p>
       </article>
     </section>

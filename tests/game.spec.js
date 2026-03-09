@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-async function boot(page, mode = 'challenge', birdId = 'parrot') {
+async function boot(page, mode = 'zen', birdId = 'parrot') {
   const pageErrors = [];
   const consoleErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));

@@ -240,8 +240,8 @@ export class BirdGame {
     this.debugLastShotAt = 0;
 
     this.features = {
-      mode: 'challenge',
-      combatEnabled: true,
+      mode: 'zen',
+      combatEnabled: false,
     };
     this.tuning = {
       camera: {
@@ -1621,7 +1621,7 @@ export class BirdGame {
     return getStats(this);
   }
 
-  setMode(mode = 'challenge') {
+  setMode(mode = 'zen') {
     const nextMode = mode === 'challenge' ? 'challenge' : 'zen';
     this.features.mode = nextMode;
     this.features.combatEnabled = nextMode === 'challenge';
