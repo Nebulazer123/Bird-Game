@@ -13,7 +13,7 @@ export default defineConfig({
   webServer: {
     command: 'corepack pnpm dev --host 127.0.0.1 --port 4187',
     url: 'http://127.0.0.1:4187',
-    reuseExistingServer: false,
+    reuseExistingServer: true,
     timeout: 90000,
   },
 });
