@@ -172,6 +172,7 @@ export class BirdGame {
     this.tmpVector2 = new THREE.Vector3();
     this.tmpVector3 = new THREE.Vector3();
     this.tmpColor = new THREE.Color();
+    this.worldMapRadius = WORLD_LIMIT;
     this.forwardVector = new THREE.Vector3();
     this.rightVector = new THREE.Vector3();
     this.previousBirdPosition = START_POSITION.clone();
@@ -450,6 +451,7 @@ export class BirdGame {
     this.createTrees();
     this.createRocks();
     this.createFoliage();
+    this.createBoundaryMountains();
     this.createClouds();
     this.createNest();
     this.createGuidanceArrow();
@@ -532,6 +534,7 @@ export class BirdGame {
     this.createTrees();
     this.createRocks();
     this.createFoliage();
+    this.createBoundaryMountains();
     this.createClouds();
   }
 
@@ -669,6 +672,16 @@ export class BirdGame {
         this.tmpColor.lerp(new THREE.Color(0xd6c792), 0.45);
       }
 
+      const valleyLine = Math.exp(-Math.pow((z - valleyCenter) / 34, 2));
+      if (valleyLine > 0.52) {
+        this.tmpColor.lerp(new THREE.Color(0xc4b589), 0.28 * valleyLine);
+      }
+
+      if (Math.abs(x) > 420 || Math.abs(z) > 420) {
+        const edgeFade = clamp((Math.max(Math.abs(x), Math.abs(z)) - 420) / 120, 0, 1);
+        this.tmpColor.lerp(new THREE.Color(0x9d8e6a), edgeFade * 0.42);
+      }
+
       colors[index * 3] = this.tmpColor.r;
       colors[index * 3 + 1] = this.tmpColor.g;
       colors[index * 3 + 2] = this.tmpColor.b;
@@ -696,6 +709,34 @@ export class BirdGame {
     const shelves = Math.sin(x * 0.05) * Math.cos(z * 0.04) * 2.4;
     const ridge = clamp((Math.abs(x) - 320) * 0.08, 0, 18);
     return rolling + shelves + valleyLift - 5 + ridge;
+  }
+
+  createBoundaryMountains() {
+    const count = 28;
+    const baseRadius = this.worldMapRadius + 35;
+
+    for (let index = 0; index < count; index += 1) {
+      const angle = (index / count) * Math.PI * 2;
+      const jitter = seed(index * 37.1 + 9.4) - 0.5;
+      const radius = baseRadius + jitter * 34;
+      const height = 58 + seed(index * 14.7 + 2.1) * 62;
+      const width = 30 + seed(index * 23.8 + 5.3) * 26;
+
+      const mountain = new THREE.Mesh(
+        new THREE.ConeGeometry(width, height, 8),
+        new THREE.MeshStandardMaterial({
+          color: new THREE.Color().setHSL(0.12, 0.24, 0.34 + seed(index * 12.3) * 0.08),
+          roughness: 0.95,
+          metalness: 0,
+        }),
+      );
+      mountain.position.set(Math.cos(angle) * radius, height * 0.4 - 4, Math.sin(angle) * radius);
+      mountain.rotation.y = angle + jitter * 0.4;
+      mountain.castShadow = true;
+      mountain.receiveShadow = true;
+      this.scene.add(mountain);
+      this.decor.push(mountain);
+    }
   }
 
   createBird() {

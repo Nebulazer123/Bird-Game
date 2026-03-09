@@ -64,6 +64,26 @@ function getThreatState(game) {
   };
 }
 
+
+function projectToMiniMap(game, point, size = 160) {
+  const normalizedX = clamp((point.x + game.worldMapRadius) / (game.worldMapRadius * 2), 0, 1);
+  const normalizedZ = clamp((point.z + game.worldMapRadius) / (game.worldMapRadius * 2), 0, 1);
+  return {
+    x: normalizedX * size,
+    y: normalizedZ * size,
+  };
+}
+
+function getMapTarget(game) {
+  if (game.features.mode === 'zen') {
+    const nextNote = game.zenNotes.find((note) => !note.collected);
+    return nextNote ? nextNote.position : game.courseData.nestPosition;
+  }
+
+  const activeRing = game.courseRings[game.state.activeRingIndex];
+  return activeRing ? activeRing.position : game.courseData.nestPosition;
+}
+
 function getTutorialPrompt(game) {
   if (game.state.recentHitTimer > 0 || game.state.lastGroundDistance < 9) return '';
   if (game.state.awaitingTakeoff) return 'Press W or push the left stick forward to start gliding.';
@@ -127,6 +147,23 @@ export function updateHud(game) {
   game.ui.reticle.classList.toggle('is-pulse', game.state.recentPulseTimer > 0);
 
   game.ui.threatIndicator.style.opacity = `${clamp(threat.level, 0, 1)}`;
+
+  if (game.ui.mapPlayer && game.ui.mapTarget && game.ui.mapNest) {
+    const mapSize = game.ui.miniMap?.clientWidth || 160;
+    const playerPos = projectToMiniMap(game, game.bird.root.position, mapSize);
+    const targetPos = projectToMiniMap(game, getMapTarget(game), mapSize);
+    const nestPos = projectToMiniMap(game, game.courseData.nestPosition, mapSize);
+
+    game.ui.mapPlayer.style.left = `${playerPos.x}px`;
+    game.ui.mapPlayer.style.top = `${playerPos.y}px`;
+    game.ui.mapTarget.style.left = `${targetPos.x}px`;
+    game.ui.mapTarget.style.top = `${targetPos.y}px`;
+    game.ui.mapNest.style.left = `${nestPos.x}px`;
+    game.ui.mapNest.style.top = `${nestPos.y}px`;
+
+    const heading = game.bird.heading + Math.PI;
+    game.ui.mapPlayer.style.transform = `translate(-50%, -50%) rotate(${heading}rad)`;
+  }
   game.ui.threatIndicator.style.transform = `translateX(-50%) rotate(${threat.angle}rad) scale(${0.8 + threat.level * 0.35})`;
   game.ui.threatIndicator.classList.toggle('is-hidden', threat.level <= 0.08);
   game.ui.groundWarning.classList.toggle('is-hidden', !groundWarning);
