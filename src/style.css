@@ -536,6 +536,85 @@ kbd {
   background: rgba(126, 240, 163, 0.28);
 }
 
+.bird-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.2rem;
+}
+
+.bird-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 240, 205, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 247, 220, 0.1), rgba(111, 182, 211, 0.06)),
+    rgba(22, 46, 63, 0.6);
+  color: #fff7e9;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.bird-card:hover {
+  border-color: rgba(255, 240, 205, 0.38);
+}
+
+.bird-card.is-active {
+  border-color: rgba(255, 215, 111, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 238, 175, 0.22), rgba(136, 200, 230, 0.12)),
+    rgba(22, 46, 63, 0.72);
+}
+
+.bird-card-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #fff3cf;
+}
+
+.bird-card-tagline {
+  font-size: 0.82rem;
+  color: rgba(245, 239, 228, 0.82);
+}
+
+.bird-badge {
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 211, 111, 0.28);
+  color: #ffd36f;
+  vertical-align: middle;
+  margin-left: 0.35rem;
+}
+
+.start-detail {
+  margin-bottom: 1rem;
+}
+
+.start-detail strong {
+  font-size: 1.1rem;
+  color: #fff3cf;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.start-detail p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(247, 240, 226, 0.88);
+}
+
+.start-card {
+  max-width: 52rem;
+}
+
 @media (max-width: 1180px) {
   .stat-strip {
     width: min(46rem, 100%);
@@ -571,6 +650,10 @@ kbd {
   .debug-actions,
   .skill-columns {
     grid-template-columns: 1fr;
+  }
+
+  .bird-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .pause-actions {

@@ -15,6 +15,10 @@ export function getInputState(game) {
     return game.emptyInput();
   }
 
+  if (game.state.startOverlayOpen) {
+    return game.emptyInput();
+  }
+
   return {
     forward: game.keys.has('KeyW') || gamepad.moveY < -0.35,
     brake: game.keys.has('KeyS') || gamepad.moveY > 0.35,

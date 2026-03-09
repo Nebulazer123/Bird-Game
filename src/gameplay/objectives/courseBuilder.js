@@ -3,9 +3,9 @@ import {
   BASE_RING_COUNT,
   RINGS_PER_STAGE,
   START_POSITION,
-  WORLD_LIMIT,
 } from '../core/config.js';
 import { seed } from '../core/math.js';
+import { VALLEY_LAYOUT, sampleFlightLane } from '../presentation/valleyLayout.js';
 
 const lerp = THREE.MathUtils.lerp;
 
@@ -17,11 +17,15 @@ export function generateStageCourse(game, stage = game.state.stage) {
 
   for (let index = 0; index < ringCount; index += 1) {
     const progress = (index + 1) / (ringCount + 1);
-    const x = lerp(-70, 410, progress) + (seed(seedBase + index * 3.1) - 0.5) * 34;
-    const z = Math.sin(progress * Math.PI * (2.2 + seed(seedBase + index * 5.7))) * 44
-      + Math.cos(progress * Math.PI * 3.6) * 18
-      + (seed(seedBase + index * 8.4) - 0.5) * 22;
-    const y = 34 + progress * 78 + seed(seedBase + index * 2.4) * 18;
+    const guideX = lerp(START_POSITION.x + 36, VALLEY_LAYOUT.nestPeak.x - 38, progress);
+    const lane = sampleFlightLane(guideX);
+    const lateralSwing = (seed(seedBase + index * 5.7) - 0.5) * lane.width * 0.72;
+    const x = guideX + (seed(seedBase + index * 3.1) - 0.5) * 18;
+    const z = lane.z + lateralSwing;
+    const y = Math.max(
+      lane.y + progress * 16 + seed(seedBase + index * 2.4) * 14,
+      game.heightAt(x, z) + 18 + progress * 10,
+    );
     const point = new THREE.Vector3(x, y, z);
     if (point.distanceTo(previous) < 26) {
       point.x += 18;
@@ -32,17 +36,22 @@ export function generateStageCourse(game, stage = game.state.stage) {
   }
 
   const lastRing = ringPositions[ringPositions.length - 1];
-  const nestPosition = lastRing.clone().add(new THREE.Vector3(54, 12, 30 + (seed(seedBase + 999) - 0.5) * 28));
-  nestPosition.y = Math.max(nestPosition.y, game.heightAt(nestPosition.x, nestPosition.z) + 88);
-  const cornerHeight = 74 + stage * 2;
+  const nestPosition = new THREE.Vector3(
+    VALLEY_LAYOUT.nestPeak.x,
+    VALLEY_LAYOUT.nestPeak.y + stage * 3,
+    VALLEY_LAYOUT.nestPeak.z + (seed(seedBase + 999) - 0.5) * 12,
+  );
+  nestPosition.y = Math.max(nestPosition.y, game.heightAt(nestPosition.x, nestPosition.z) + 62);
   game.courseData = {
     ringPositions,
     nestPosition,
-    enemySpawns: [
-      new THREE.Vector3(-WORLD_LIMIT + 82, cornerHeight, -WORLD_LIMIT + 88),
-      new THREE.Vector3(WORLD_LIMIT - 92, cornerHeight + 8, -WORLD_LIMIT + 76),
-      new THREE.Vector3(WORLD_LIMIT - 96, cornerHeight + 5, WORLD_LIMIT - 84),
-    ],
+    enemySpawns: VALLEY_LAYOUT.supports.map((anchor, index) => (
+      new THREE.Vector3(
+        anchor.x + index * 8,
+        Math.max(anchor.y + 8, game.heightAt(anchor.x, anchor.z) + 16),
+        anchor.z + (index - 1) * 6,
+      )
+    )),
   };
   game.state.totalRings = ringCount;
 }

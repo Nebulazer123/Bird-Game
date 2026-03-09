@@ -5,6 +5,7 @@ import { createDefaultSystems } from './gameplay/engine/systems.js';
 import {
   ASSET_URLS,
   BASE_RING_COUNT,
+  BIRD_PROFILES,
   DEATH_ANIMATION_SECONDS,
   DOWN,
   ENEMY_BODY_RADIUS,
@@ -124,6 +125,12 @@ import {
   composeZenSong as composeZenSongSystem,
   updateZenCompletion as updateZenCompletionSystem,
 } from './gameplay/zen/zenCompletionSystem.js';
+import {
+  VALLEY_LAYOUT,
+  authoredHeightAt,
+  sampleFlightLane,
+  sampleRiverState,
+} from './gameplay/presentation/valleyLayout.js';
 
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
@@ -156,6 +163,13 @@ export class BirdGame {
     this.models = {
       player: null,
       enemy: null,
+      quaternius: {
+        trees: [],
+        deadTrees: [],
+        rocks: [],
+        pathRocks: [],
+        foliage: [],
+      },
       kenney: {
         trees: [],
         rocks: [],
@@ -201,6 +215,7 @@ export class BirdGame {
 
     this.waterMaterial = null;
     this.water = null;
+    this.waterSegments = [];
     this.terrain = null;
     this.perch = null;
     this.perchPlatform = null;
@@ -225,8 +240,8 @@ export class BirdGame {
     this.debugLastShotAt = 0;
 
     this.features = {
-      mode: 'zen',
-      combatEnabled: false,
+      mode: 'challenge',
+      combatEnabled: true,
     };
     this.tuning = {
       camera: {
@@ -283,8 +298,10 @@ export class BirdGame {
       errors: [],
       health: 100,
       maxHealth: 100,
+      selectedBirdId: 'parrot',
       paused: false,
       debugOpen: false,
+      startOverlayOpen: false,
       showcaseMode: false,
       skillMenuOpen: false,
       godMode: false,
@@ -348,6 +365,7 @@ export class BirdGame {
 
     this.bird = this.createBird();
     this.scene.add(this.bird.root);
+    this.applyBirdProfile();
 
     this.buildSky();
     this.buildWorld();
@@ -359,6 +377,7 @@ export class BirdGame {
     this.onResize();
     this.resetMission();
     this.installVisualUpgrades();
+    this.openStartOverlay(true);
 
     this.engine = new GameEngine(this, createDefaultSystems());
   }
@@ -438,20 +457,14 @@ export class BirdGame {
       emissiveIntensity: 0.18,
     });
 
-    this.water = new THREE.Mesh(
-      new THREE.PlaneGeometry(980, 300, 1, 1),
-      this.waterMaterial,
-    );
-    this.water.rotation.x = -Math.PI / 2;
-    this.water.position.set(90, 7.2, 12);
-    this.water.receiveShadow = true;
-    this.scene.add(this.water);
+    this.createRiver();
 
     this.createTrees();
     this.createRocks();
     this.createFoliage();
     this.createClouds();
     this.createNest();
+    this.createCliffSupports();
     this.createGuidanceArrow();
   }
 
@@ -459,6 +472,7 @@ export class BirdGame {
     this.loadSceneEnvironment();
     this.loadPlayerModel();
     this.loadEnemyModel();
+    this.loadQuaterniusModels();
     this.loadKenneyModels();
   }
 
@@ -481,7 +495,7 @@ export class BirdGame {
       });
       if (!gltf) return;
       this.models.player = gltf;
-      this.applyPlayerModel();
+      this.refreshPlayerAvatar();
     } catch {
       // Optional: fallback to procedural bird.
     }
@@ -499,6 +513,40 @@ export class BirdGame {
     } catch {
       // Optional: fallback to procedural enemies.
     }
+  }
+
+  async loadQuaterniusModels() {
+    const collect = async (url) => {
+      try {
+        const gltf = await this.assets.loadGlb(url);
+        return gltf?.scene ? gltf.scene : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const [trees, deadTrees, rocks, pathRocks, foliage] = await Promise.all([
+      Promise.all(ASSET_URLS.quaternius.trees.map(collect)),
+      Promise.all(ASSET_URLS.quaternius.deadTrees.map(collect)),
+      Promise.all(ASSET_URLS.quaternius.rocks.map(collect)),
+      Promise.all(ASSET_URLS.quaternius.pathRocks.map(collect)),
+      Promise.all(ASSET_URLS.quaternius.foliage.map(collect)),
+    ]);
+
+    this.models.quaternius.trees = trees.filter(Boolean);
+    this.models.quaternius.deadTrees = deadTrees.filter(Boolean);
+    this.models.quaternius.rocks = rocks.filter(Boolean);
+    this.models.quaternius.pathRocks = pathRocks.filter(Boolean);
+    this.models.quaternius.foliage = foliage.filter(Boolean);
+
+    const hasAny = this.models.quaternius.trees.length
+      + this.models.quaternius.deadTrees.length
+      + this.models.quaternius.rocks.length
+      + this.models.quaternius.pathRocks.length
+      + this.models.quaternius.foliage.length > 0;
+    if (!hasAny) return;
+
+    this.rebuildDecor();
   }
 
   async loadKenneyModels() {
@@ -533,6 +581,7 @@ export class BirdGame {
     this.createRocks();
     this.createFoliage();
     this.createClouds();
+    this.createCliffSupports();
   }
 
   clearDecor() {
@@ -577,15 +626,131 @@ export class BirdGame {
     return clone;
   }
 
+  getSelectedBirdProfile() {
+    return BIRD_PROFILES[this.state.selectedBirdId] ?? BIRD_PROFILES.parrot;
+  }
+
+  selectBird(birdId = 'parrot') {
+    const nextId = BIRD_PROFILES[birdId] ? birdId : 'parrot';
+    if (this.state.selectedBirdId === nextId) {
+      this.updateBirdSelectionUi();
+      return;
+    }
+
+    this.state.selectedBirdId = nextId;
+    this.applyBirdProfile();
+    this.updateBirdSelectionUi();
+    this.updateHud();
+  }
+
+  updateBirdSelectionUi() {
+    if (!this.ui.birdButtons?.length) return;
+    const profile = this.getSelectedBirdProfile();
+    this.ui.birdButtons.forEach((button) => {
+      const active = button.dataset.bird === profile.id;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    if (this.ui.selectedBirdName) this.ui.selectedBirdName.textContent = profile.name;
+    if (this.ui.selectedBirdSummary) this.ui.selectedBirdSummary.textContent = profile.summary;
+  }
+
+  openStartOverlay(forceValue) {
+    const wantsOpen = typeof forceValue === 'boolean' ? forceValue : !this.state.startOverlayOpen;
+    this.state.startOverlayOpen = wantsOpen;
+    this.ui.startOverlay?.classList.toggle('is-hidden', !wantsOpen);
+    if (wantsOpen) this.keys.clear();
+    this.updateBirdSelectionUi();
+  }
+
+  startRun(selectedBirdId = this.state.selectedBirdId) {
+    this.selectBird(selectedBirdId);
+    this.openStartOverlay(false);
+    this.resetMouseAim();
+    this.keys.clear();
+    this.updateHud();
+  }
+
+  applyBirdProfile() {
+    const profile = this.getSelectedBirdProfile();
+    const shape = profile.proceduralShape;
+    const palette = profile.palette;
+
+    this.bird.materials.plumage.color.set(palette.plumage);
+    this.bird.materials.chest.color.set(palette.chest);
+    this.bird.materials.beak.color.set(palette.beak);
+    this.bird.materials.eye.color.set(palette.eye);
+
+    this.bird.visual.scale.setScalar(shape.visualScale);
+    this.bird.body.scale.fromArray(shape.bodyScale);
+    this.bird.chestPatch.scale.fromArray(shape.chestScale);
+    this.bird.chestPatch.position.fromArray(shape.chestPosition);
+    this.bird.head.scale.fromArray(shape.headScale);
+    this.bird.head.position.fromArray(shape.headPosition);
+    this.bird.beakMesh.scale.fromArray(shape.beakScale);
+    this.bird.beakMesh.position.fromArray(shape.beakPosition);
+    this.bird.tail.scale.fromArray(shape.tailScale);
+    this.bird.tail.position.fromArray(shape.tailPosition);
+    this.bird.leftWingPivot.position.fromArray(shape.leftWingPivot);
+    this.bird.rightWingPivot.position.set(-shape.leftWingPivot[0], shape.leftWingPivot[1], shape.leftWingPivot[2]);
+    this.bird.leftWing.scale.fromArray(shape.wingScale);
+    this.bird.leftWing.position.fromArray(shape.wingPosition);
+    this.bird.rightWing.scale.fromArray(shape.wingScale);
+    this.bird.rightWing.position.set(-shape.wingPosition[0], shape.wingPosition[1], shape.wingPosition[2]);
+
+    this.refreshPlayerAvatar();
+  }
+
+  clearPlayerModel() {
+    if (!this.bird.model) return;
+    this.bird.root.remove(this.bird.model);
+    this.bird.model = null;
+    this.bird.mixer = null;
+  }
+
+  tintPlayerMaterial(material, tintHex) {
+    if (!material?.clone) return material;
+    const clone = material.clone();
+    if (clone.color) {
+      clone.color.multiply(new THREE.Color(tintHex));
+    }
+    clone.needsUpdate = true;
+    return clone;
+  }
+
+  refreshPlayerAvatar() {
+    const profile = this.getSelectedBirdProfile();
+    const wantsModel = profile.modelStrategy === 'sharedModel' && Boolean(this.models.player);
+
+    this.clearPlayerModel();
+    this.bird.visual.visible = !wantsModel;
+    if (wantsModel) {
+      this.applyPlayerModel();
+    }
+  }
+
   applyPlayerModel() {
-    if (!this.models.player || this.bird.model) return;
+    if (!this.models.player) return;
+    const profile = this.getSelectedBirdProfile();
 
     const model = this.assets.cloneSkinned(this.models.player.scene);
-    this.normalizeVisual(model, { targetSize: 5.2, yRotation: 0, yOffset: -0.6 });
+    this.normalizeVisual(model, {
+      targetSize: profile.stats.modelTargetSize,
+      yRotation: 0,
+      yOffset: profile.stats.modelYOffset,
+    });
+    model.scale.multiplyScalar(profile.stats.modelScaleMultiplier);
     model.traverse((node) => {
       if (node.isMesh) {
         node.castShadow = true;
         node.receiveShadow = false;
+        if (node.material) {
+          if (Array.isArray(node.material)) {
+            node.material = node.material.map((material) => this.tintPlayerMaterial(material, profile.palette.tint));
+          } else {
+            node.material = this.tintPlayerMaterial(node.material, profile.palette.tint);
+          }
+        }
       }
     });
 
@@ -647,6 +812,60 @@ export class BirdGame {
     clone.needsUpdate = true;
     return clone;
   }
+
+  createRiver() {
+    this.waterSegments.forEach((segment) => this.scene.remove(segment));
+    this.waterSegments = [];
+
+    for (let index = 0; index < VALLEY_LAYOUT.river.length - 1; index += 1) {
+      const start = VALLEY_LAYOUT.river[index];
+      const end = VALLEY_LAYOUT.river[index + 1];
+      const startVec = new THREE.Vector3(start.x, start.y, start.z);
+      const endVec = new THREE.Vector3(end.x, end.y, end.z);
+      const direction = endVec.clone().sub(startVec);
+      const length = direction.length();
+      const width = lerp(start.width, end.width, 0.5);
+      const mid = startVec.clone().lerp(endVec, 0.5);
+
+      const segment = new THREE.Mesh(
+        new THREE.PlaneGeometry(length, width, 1, 1),
+        this.waterMaterial,
+      );
+      segment.rotation.x = -Math.PI / 2;
+      segment.rotation.z = Math.atan2(direction.z, direction.x);
+      segment.position.copy(mid);
+      segment.receiveShadow = true;
+      segment.userData.baseY = mid.y;
+      this.scene.add(segment);
+      this.waterSegments.push(segment);
+    }
+
+    this.water = this.waterSegments[0] ?? null;
+  }
+
+  createCliffSupports() {
+    const rockTemplates = this.models.quaternius.rocks.length > 0
+      ? this.models.quaternius.rocks
+      : this.models.kenney.rocks;
+    if (rockTemplates.length <= 0) return;
+
+    VALLEY_LAYOUT.supports.forEach((anchor, index) => {
+      const template = rockTemplates[index % rockTemplates.length];
+      for (let stackIndex = 0; stackIndex < 3; stackIndex += 1) {
+        const offset = stackIndex * 5.6;
+        this.spawnPropFromTemplate(template, {
+          position: new THREE.Vector3(
+            anchor.x + (stackIndex - 1) * 3.2,
+            anchor.y + offset,
+            anchor.z + (stackIndex % 2 === 0 ? -2.2 : 2.2),
+          ),
+          scale: 3.6 - stackIndex * 0.5,
+          rotationY: seed(index * 7 + stackIndex) * Math.PI * 2,
+        });
+      }
+    });
+  }
+
   createTerrain() {
     const geometry = new THREE.PlaneGeometry(1050, 1050, 220, 220);
     geometry.rotateX(-Math.PI / 2);
@@ -661,12 +880,19 @@ export class BirdGame {
 
       positions.setY(index, y);
 
-      const fertile = clamp((y - 4) / 52, 0, 1);
-      this.tmpColor
-        .setHSL(lerp(0.27, 0.18, fertile), lerp(0.46, 0.58, fertile), lerp(0.3, 0.53, fertile));
+      const river = sampleRiverState(x);
+      const riverDistance = Math.abs(z - river.z);
+      const fertile = clamp((y - 5) / 68, 0, 1);
+      this.tmpColor.setHSL(
+        lerp(0.29, 0.18, fertile),
+        lerp(0.36, 0.54, fertile),
+        lerp(0.32, 0.52, fertile),
+      );
 
-      if (y < 10) {
-        this.tmpColor.lerp(new THREE.Color(0xd6c792), 0.45);
+      if (riverDistance < river.width * 0.7) {
+        this.tmpColor.lerp(new THREE.Color(0xcab887), 0.58);
+      } else if (y > 42) {
+        this.tmpColor.lerp(new THREE.Color(0x887967), 0.38);
       }
 
       colors[index * 3] = this.tmpColor.r;
@@ -689,13 +915,7 @@ export class BirdGame {
   }
 
   heightAt(x, z) {
-    const valleyCenter = Math.sin((x + 120) * 0.012) * 44 + Math.sin(x * 0.023) * 10;
-    const valleyDistance = Math.abs(z - valleyCenter);
-    const valleyLift = Math.min((valleyDistance * valleyDistance) / 180, 34);
-    const rolling = Math.sin(x * 0.017) * 10 + Math.cos(z * 0.019) * 7 + Math.sin((x + z) * 0.013) * 5;
-    const shelves = Math.sin(x * 0.05) * Math.cos(z * 0.04) * 2.4;
-    const ridge = clamp((Math.abs(x) - 320) * 0.08, 0, 18);
-    return rolling + shelves + valleyLift - 5 + ridge;
+    return authoredHeightAt(x, z);
   }
 
   createBird() {
@@ -779,12 +999,33 @@ export class BirdGame {
       root,
       visual,
       body,
+      chestPatch,
       tail,
       head,
+      beakMesh,
+      eyeLeft,
+      eyeRight,
       leftWingPivot,
+      rightWing,
+      leftWing,
       rightWingPivot,
+      materials: {
+        plumage,
+        chest,
+        beak,
+        eye: dark,
+      },
       model: null,
       mixer: null,
+      shapeDefaults: {
+        chestPosition: chestPatch.position.clone(),
+        headPosition: head.position.clone(),
+        beakPosition: beakMesh.position.clone(),
+        tailPosition: tail.position.clone(),
+        leftWingPivot: leftWingPivot.position.clone(),
+        rightWingPivot: rightWingPivot.position.clone(),
+        wingPosition: leftWing.position.clone(),
+      },
       speed: 24,
       heading: 0.62,
       pitch: 0,
@@ -817,7 +1058,55 @@ export class BirdGame {
     spawnEnemyWaveSystem(this, mode);
   }
 
+  spawnClusteredProps(clusters, templates, {
+    spreadScale = 1,
+    scaleMin = 1,
+    scaleMax = 1,
+    yLift = 0,
+  } = {}) {
+    if (templates.length <= 0) return;
+
+    clusters.forEach((cluster, clusterIndex) => {
+      for (let index = 0; index < cluster.count; index += 1) {
+        const scatterSeed = clusterIndex * 200 + index * 13;
+        const x = cluster.x + (seed(scatterSeed + 1) - 0.5) * cluster.spreadX * spreadScale;
+        const z = cluster.z + (seed(scatterSeed + 2) - 0.5) * cluster.spreadZ * spreadScale;
+        const y = this.heightAt(x, z) + yLift;
+        const rotationY = seed(scatterSeed + 3) * Math.PI * 2;
+        const scale = lerp(scaleMin, scaleMax, seed(scatterSeed + 4));
+        const template = templates[(clusterIndex + index) % templates.length];
+        this.spawnPropFromTemplate(template, {
+          position: new THREE.Vector3(x, y, z),
+          scale,
+          rotationY,
+        });
+      }
+    });
+  }
+
   createTrees() {
+    if (this.models.quaternius.trees.length > 0 || this.models.quaternius.deadTrees.length > 0) {
+      const mixed = [
+        ...this.models.quaternius.trees,
+        ...this.models.quaternius.deadTrees,
+      ];
+      VALLEY_LAYOUT.treeGroves.forEach((grove, groveIndex) => {
+        const familyTemplates = grove.family === 'dead'
+          ? this.models.quaternius.deadTrees
+          : grove.family === 'twisted'
+            ? this.models.quaternius.trees.filter((_, index) => index >= 4)
+            : grove.family === 'pine'
+              ? this.models.quaternius.trees.filter((_, index) => index >= 3)
+              : mixed;
+        const templates = familyTemplates.length > 0 ? familyTemplates : mixed;
+        this.spawnClusteredProps([{ ...grove }], templates, {
+          scaleMin: grove.family === 'dead' ? 2.3 : 2.8,
+          scaleMax: grove.family === 'pine' ? 4.8 : 4.2,
+        });
+      });
+      return;
+    }
+
     if (this.models.kenney.trees.length > 0) {
       for (let index = 0; index < 110; index += 1) {
         const x = lerp(-480, 480, seed(index * 2 + 1));
@@ -887,6 +1176,29 @@ export class BirdGame {
   }
 
   createRocks() {
+    if (this.models.quaternius.rocks.length > 0) {
+      this.spawnClusteredProps(VALLEY_LAYOUT.rockFields, this.models.quaternius.rocks, {
+        scaleMin: 1.6,
+        scaleMax: 3.8,
+      });
+      this.spawnClusteredProps(
+        VALLEY_LAYOUT.riverRocks.map((entry) => ({
+          x: entry.x,
+          z: entry.z,
+          spreadX: 18,
+          spreadZ: 10,
+          count: 3,
+        })),
+        this.models.quaternius.pathRocks.length > 0 ? this.models.quaternius.pathRocks : this.models.quaternius.rocks,
+        {
+          scaleMin: 1.1,
+          scaleMax: 1.9,
+          yLift: 0.2,
+        },
+      );
+      return;
+    }
+
     if (this.models.kenney.rocks.length > 0) {
       for (let index = 0; index < 45; index += 1) {
         const x = lerp(-420, 460, seed(index * 3 + 8));
@@ -929,6 +1241,24 @@ export class BirdGame {
   }
 
   createFoliage() {
+    if (this.models.quaternius.foliage.length > 0) {
+      this.spawnClusteredProps(VALLEY_LAYOUT.meadowPatches, this.models.quaternius.foliage, {
+        scaleMin: 1.2,
+        scaleMax: 2.8,
+      });
+      if (this.models.kenney.foliage.length > 0) {
+        this.spawnClusteredProps(
+          VALLEY_LAYOUT.meadowPatches.map((patch) => ({ ...patch, count: Math.max(4, Math.round(patch.count * 0.2)) })),
+          this.models.kenney.foliage,
+          {
+            scaleMin: 0.9,
+            scaleMax: 1.6,
+          },
+        );
+      }
+      return;
+    }
+
     if (this.models.kenney.foliage.length <= 0) return;
 
     for (let index = 0; index < 160; index += 1) {
@@ -1196,10 +1526,10 @@ export class BirdGame {
   resetMission() {
     this.state.stage = 1;
     this.state.skillPoints = 0;
-    this.state.maxHealth = 100;
     Object.keys(this.state.unlockedSkills).forEach((skill) => {
       this.state.unlockedSkills[skill] = false;
     });
+    this.applyBirdProfile();
     this.resetStage(true);
   }
 
@@ -1242,6 +1572,7 @@ export class BirdGame {
     if (fullReset) {
       this.state.stageSeed = 1;
     }
+    this.applyBirdProfile();
     this.getStats();
     this.state.health = this.state.maxHealth;
     this.buildStageCourse();
@@ -1274,6 +1605,10 @@ export class BirdGame {
     this.ui.finishOverlay.classList.add('is-hidden');
     this.ui.pauseOverlay.classList.add('is-hidden');
     this.ui.skillOverlay.classList.add('is-hidden');
+    if (this.state.startOverlayOpen) {
+      this.ui.startOverlay.classList.remove('is-hidden');
+    }
+    this.updateBirdSelectionUi();
     this.updateHud();
   }
 
@@ -1281,7 +1616,7 @@ export class BirdGame {
     return getStats(this);
   }
 
-  setMode(mode = 'zen') {
+  setMode(mode = 'challenge') {
     const nextMode = mode === 'challenge' ? 'challenge' : 'zen';
     this.features.mode = nextMode;
     this.features.combatEnabled = nextMode === 'challenge';

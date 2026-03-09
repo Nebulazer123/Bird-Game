@@ -1,7 +1,16 @@
 import './style.css';
 import { BirdGame } from './game.js';
+import { BIRD_PROFILES } from './gameplay/core/config.js';
 
 const app = document.querySelector('#app');
+
+const birdCardsHtml = Object.values(BIRD_PROFILES).map((profile) => `
+  <button class="bird-card${profile.recommended ? ' is-active' : ''}" type="button"
+          data-bird="${profile.id}" aria-pressed="${profile.recommended}">
+    <span class="bird-card-name">${profile.name}${profile.recommended ? ' <em class="bird-badge">recommended</em>' : ''}</span>
+    <span class="bird-card-tagline">${profile.tagline}</span>
+  </button>
+`).join('');
 
 app.innerHTML = `
   <main class="game-shell">
@@ -10,16 +19,16 @@ app.innerHTML = `
     <section class="hud top-bar" data-role="top-bar">
       <div class="title-block" data-role="title-block">
         <p class="eyebrow">Featherwind Valley</p>
-        <h1>Zen Soarer Slice</h1>
-        <p class="subtitle">Follow warm winds, collect songs, and let challenge routes stay optional.</p>
+        <h1>Challenge Flight</h1>
+        <p class="subtitle">Clear the wind gates, earn upgrades, and secure the Sun Nest.</p>
       </div>
       <div class="stat-strip">
         <article class="glass-card compact objective-card" data-role="objective-chip">
-          <span class="label" data-role="mode-badge">Zen Soarer</span>
-          <strong data-role="mission">Notes 0 / 9</strong>
-          <p class="chip-copy" data-role="objective-hint">Drift toward the next song note.</p>
+          <span class="label" data-role="mode-badge">Challenge Flight</span>
+          <strong data-role="mission">Gate 1 / 12</strong>
+          <p class="chip-copy" data-role="objective-hint">Ride the next wind gate cleanly.</p>
         </article>
-        <article class="glass-card compact note-card" data-role="note-card">
+        <article class="glass-card compact note-card is-hidden" data-role="note-card">
           <span class="label">Songs</span>
           <strong data-role="note-progress">0 / 9</strong>
         </article>
@@ -45,7 +54,7 @@ app.innerHTML = `
         <p>Steer with the mouse or right stick.</p>
         <p><kbd>Space</kbd> flap upward.</p>
         <p><kbd>F</kbd> gust burst.</p>
-        <p><kbd>Mouse1</kbd> or <kbd>Q</kbd> Wind Pulse in Zen mode.</p>
+        <p><kbd>Mouse1</kbd> or <kbd>Q</kbd> beak shot.</p>
       </article>
     </section>
 
@@ -66,7 +75,7 @@ app.innerHTML = `
         <span class="label">Status</span>
         <p><strong data-role="health">100 / 100</strong> HP</p>
         <p data-role="aim">Mouse aim active</p>
-        <p data-role="enemy">Calm air</p>
+        <p data-role="enemy">Hunter reforming</p>
       </article>
     </section>
 
@@ -89,6 +98,22 @@ app.innerHTML = `
     </section>
 
     <button id="debug-open" class="debug-toggle" type="button" data-role="debug-open">Debug</button>
+
+    <section class="overlay start-overlay" data-role="start-overlay">
+      <div class="overlay-card start-card">
+        <p class="eyebrow">Choose your bird</p>
+        <h2>Pick a companion</h2>
+        <p class="overlay-copy">Each bird has a different flying style. You can change later from the debug menu.</p>
+        <div class="bird-grid">${birdCardsHtml}</div>
+        <div class="start-detail">
+          <strong data-role="selected-bird-name">Parrot</strong>
+          <p data-role="selected-bird-summary">Steady speed, steady health, and no sharp weaknesses.</p>
+        </div>
+        <div class="pause-actions">
+          <button type="button" class="primary-button" data-role="start-flight">Start Flight</button>
+        </div>
+      </div>
+    </section>
 
     <section class="overlay skill-overlay is-hidden" data-role="skill-overlay">
       <div class="overlay-card skill-card">
@@ -139,7 +164,7 @@ app.innerHTML = `
         <h2>Nest secured</h2>
         <p class="overlay-copy" data-role="finish-summary">Skill point added.</p>
         <div class="pause-actions">
-          <button type="button" class="primary-button" data-role="open-skills">Continue</button>
+          <button type="button" class="primary-button" data-role="open-skills">Pick Upgrade</button>
           <button type="button" class="primary-button secondary-tone" data-role="restart-button">Fly Again</button>
         </div>
       </div>
@@ -219,6 +244,11 @@ const game = new BirdGame({
   pauseOverlay: root.querySelector('[data-role="pause-overlay"]'),
   pauseResumeButton: root.querySelector('[data-role="pause-resume"]'),
   pauseRestartButton: root.querySelector('[data-role="pause-restart"]'),
+  startOverlay: root.querySelector('[data-role="start-overlay"]'),
+  startFlightButton: root.querySelector('[data-role="start-flight"]'),
+  selectedBirdName: root.querySelector('[data-role="selected-bird-name"]'),
+  selectedBirdSummary: root.querySelector('[data-role="selected-bird-summary"]'),
+  birdButtons: [...root.querySelectorAll('[data-bird]')],
   debugPanel: root.querySelector('[data-role="debug-panel"]'),
   tuningMount: root.querySelector('[data-role="tuning-mount"]'),
   debugState: root.querySelector('[data-role="debug-state"]'),

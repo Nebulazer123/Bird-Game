@@ -1,7 +1,7 @@
 function createFrameSystem() {
   return {
     update(game, delta, elapsed) {
-      const uiFrozen = game.state.paused || game.state.skillMenuOpen;
+      const uiFrozen = game.state.paused || game.state.skillMenuOpen || game.state.startOverlayOpen;
       const simulationDelta = uiFrozen && !game.state.autopilot ? 0 : delta;
       game.frame = { delta, elapsed, uiFrozen, simulationDelta };
     },

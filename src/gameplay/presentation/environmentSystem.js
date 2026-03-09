@@ -5,7 +5,9 @@ const lerp = THREE.MathUtils.lerp;
 
 export function updateEnvironment(game, delta, elapsed) {
   if (game.waterMaterial) {
-    game.water.position.y = 7.2 + Math.sin(elapsed * 0.7) * 0.35;
+    game.waterSegments.forEach((segment, index) => {
+      segment.position.y = segment.userData.baseY + Math.sin(elapsed * 0.7 + index * 0.4) * 0.18;
+    });
     game.waterMaterial.emissiveIntensity = 0.14 + Math.sin(elapsed * 0.8) * 0.05;
   }
 
@@ -25,4 +27,3 @@ export function updateEnvironment(game, delta, elapsed) {
     game.bird.speed = lerp(game.bird.speed, 18, smoothFactor(2.5, delta));
   }
 }
-

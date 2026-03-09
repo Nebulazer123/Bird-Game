@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-async function boot(page, mode = 'challenge') {
+async function boot(page, mode = 'challenge', birdId = 'parrot') {
   const pageErrors = [];
   const consoleErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -9,9 +9,10 @@ async function boot(page, mode = 'challenge') {
   });
   await page.goto('/');
   await page.waitForFunction(() => window.__birdSongReady === true);
-  await page.evaluate((requestedMode) => {
+  await page.evaluate(({ requestedMode, requestedBird }) => {
+    window.__birdSongDebug.startRun(requestedBird);
     window.__birdSongDebug.setMode(requestedMode);
-  }, mode);
+  }, { requestedMode: mode, requestedBird: birdId });
   return { pageErrors, consoleErrors };
 }
 
@@ -299,6 +300,64 @@ test('zen mode collects a note, updates the objective chip, and composes at the 
   expect(zenState.afterCollect.zenComposed).toBeTruthy();
   expect(zenState.text.progress.notesCollected).toBeGreaterThan(0);
   expect(zenState.mission).toContain('Song composed');
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test('bird picker shows all 4 birds and selecting one updates state', async ({ page }) => {
+  const pageErrors = [];
+  const consoleErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  await page.goto('/');
+  await page.waitForFunction(() => window.__birdSongReady === true);
+
+  const overlay = page.locator('[data-role="start-overlay"]');
+  await expect(overlay).toBeVisible();
+
+  const birdButtons = page.locator('[data-bird]');
+  await expect(birdButtons).toHaveCount(4);
+
+  const birdIds = await birdButtons.evaluateAll((buttons) => buttons.map((button) => button.dataset.bird));
+  expect(birdIds).toContain('parrot');
+  expect(birdIds).toContain('hummingbird');
+  expect(birdIds).toContain('falcon');
+  expect(birdIds).toContain('owl');
+
+  await page.evaluate(() => {
+    window.__birdSongDebug.selectBird('falcon');
+  });
+  const afterSelect = await page.evaluate(() => window.__birdSongDebug.getState());
+  expect(afterSelect.selectedBirdId).toBe('falcon');
+
+  await page.evaluate(() => {
+    window.__birdSongDebug.startRun('falcon');
+  });
+  const afterStart = await page.evaluate(() => window.__birdSongDebug.getState());
+  expect(afterStart.selectedBirdId).toBe('falcon');
+
+  await expect(overlay).toBeHidden();
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test('hummingbird selection shows higher agility stats than parrot', async ({ page }) => {
+  const { pageErrors, consoleErrors } = await boot(page, 'challenge', 'hummingbird');
+
+  const comparison = await page.evaluate(() => {
+    const hummingbirdStats = window.__birdSongDebug.getStats();
+    const hummingbirdState = window.__birdSongDebug.getState();
+    const text = JSON.parse(window.render_game_to_text());
+    return { hummingbirdStats, hummingbirdState, text };
+  });
+
+  expect(comparison.hummingbirdState.selectedBirdId).toBe('hummingbird');
+  expect(comparison.text.selectedBirdId).toBe('hummingbird');
+  expect(comparison.hummingbirdStats.yawRate).toBeGreaterThan(2.4);
+  expect(comparison.hummingbirdStats.flapRateMultiplier).toBeGreaterThan(1.5);
+  expect(comparison.hummingbirdState.errors).toEqual([]);
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });

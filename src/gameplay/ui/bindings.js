@@ -8,6 +8,20 @@ function isDebugToggleKey(event) {
 }
 
 export function bindUi(game) {
+  if (game.ui.birdButtons) {
+    game.ui.birdButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        game.selectBird(button.dataset.bird);
+      });
+    });
+  }
+
+  if (game.ui.startFlightButton) {
+    game.ui.startFlightButton.addEventListener('click', () => {
+      game.startRun();
+    });
+  }
+
   game.ui.skillButtons.forEach((button) => {
     button.addEventListener('click', () => {
       game.applySkill(button.dataset.skill);

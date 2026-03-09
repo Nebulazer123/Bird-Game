@@ -85,6 +85,75 @@ foreach ($name in $want) {
 }
 
 Write-Host ""
+Write-Host "== Stylized Nature MegaKit (Quaternius, CC0) =="
+$quaterniusDir = Join-Path $projectRoot "public/assets/models/quaternius"
+$quaterniusZip = Join-Path $projectRoot "output/tmp-assets/quaternius_stylized-nature-megakit.zip"
+$quaterniusExtract = Join-Path $projectRoot "output/tmp-assets/quaternius_stylized-nature-megakit"
+
+Download-File "https://quaternius.com/packs/Ultimate%20Stylized%20Nature%20Pack.zip" $quaterniusZip
+
+if (!(Test-Path $quaterniusExtract)) {
+  Ensure-Dir (Split-Path -Parent $quaterniusExtract)
+  Expand-Archive -Force $quaterniusZip $quaterniusExtract
+  Write-Host "OK  extracted $quaterniusExtract"
+} else {
+  Write-Host "OK  exists   $quaterniusExtract"
+}
+
+Ensure-Dir $quaterniusDir
+
+$quaterniusWant = @(
+  "CommonTree_1",
+  "CommonTree_2",
+  "CommonTree_4",
+  "Pine_1",
+  "Pine_3",
+  "TwistedTree_2",
+  "TwistedTree_4",
+  "DeadTree_2",
+  "DeadTree_4",
+  "Rock_Medium_1",
+  "Rock_Medium_2",
+  "Rock_Medium_3",
+  "Pebble_Round_4",
+  "Pebble_Square_5",
+  "RockPath_Round_Wide",
+  "RockPath_Round_Thin",
+  "RockPath_Square_Wide",
+  "RockPath_Square_Thin",
+  "Bush_Common",
+  "Bush_Common_Flowers",
+  "Fern_1",
+  "Plant_1",
+  "Plant_7_Big",
+  "Grass_Common_Tall",
+  "Grass_Wispy_Tall",
+  "Clover_1",
+  "Flower_3_Group",
+  "Flower_4_Group",
+  "Mushroom_Common"
+)
+
+$srcGltfDir = Get-ChildItem -Path $quaterniusExtract -Recurse -Directory | Where-Object { $_.Name -match "GLTF|gltf|glTF" } | Select-Object -First 1
+$srcGltfPath = if ($srcGltfDir) { $srcGltfDir.FullName } else { $quaterniusExtract }
+
+foreach ($baseName in $quaterniusWant) {
+  $found = Get-ChildItem -Path $srcGltfPath -Recurse -Filter "$baseName.gltf" | Select-Object -First 1
+  if (-not $found) {
+    $found = Get-ChildItem -Path $quaterniusExtract -Recurse -Filter "$baseName.gltf" | Select-Object -First 1
+  }
+  if ($found) {
+    Copy-If-Exists $found.FullName (Join-Path $quaterniusDir "$baseName.gltf")
+    $binFile = Join-Path $found.DirectoryName "$baseName.bin"
+    if (Test-Path $binFile) {
+      Copy-If-Exists $binFile (Join-Path $quaterniusDir "$baseName.bin")
+    }
+  } else {
+    Write-Host "SKIP missing $baseName.gltf in Quaternius pack"
+  }
+}
+
+Write-Host ""
 Write-Host "Done."
-Write-Host "Next: run `corepack pnpm dev` and the game will load local assets from /public/assets/..."
+Write-Host "Next: run ``corepack pnpm dev`` and the game will load local assets from /public/assets/..."
 
