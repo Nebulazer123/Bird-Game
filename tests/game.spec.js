@@ -361,3 +361,66 @@ test('hummingbird selection shows higher agility stats than parrot', async ({ pa
   expect(consoleErrors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
+
+test('zen wind gates stay optional, loop continuously, and update hint copy', async ({ page }) => {
+  const { pageErrors, consoleErrors } = await boot(page, 'zen');
+
+  const result = await page.evaluate(() => {
+    window.__birdSongDebug.clearActiveRing();
+    for (let index = 0; index < 13; index += 1) {
+      window.__birdSongDebug.passActiveRing();
+    }
+    window.advanceTime(120);
+    const state = window.__birdSongDebug.getState();
+    const objectiveHint = document.querySelector('[data-role="objective-hint"]')?.textContent ?? '';
+    const text = JSON.parse(window.render_game_to_text());
+    return { state, objectiveHint, text };
+  });
+
+  expect(result.state.mode).toBe('zen');
+  expect(result.state.ringsCleared).toBe(0);
+  expect(result.state.zenWindGatesPassed).toBeGreaterThanOrEqual(13);
+  expect(result.state.activeRingIndex).toBeGreaterThanOrEqual(0);
+  expect(result.state.activeRingIndex).toBeLessThan(result.state.totalRings);
+  expect(result.objectiveHint).toContain(`Wind gates sung: ${result.state.zenWindGatesPassed}`);
+  expect(result.text.progress.windGatesPassed).toBe(result.state.zenWindGatesPassed);
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
+test('zen damage indicator shows directional hit feedback and panels auto-collapse in calm flight', async ({ page }) => {
+  const { pageErrors, consoleErrors } = await boot(page, 'zen');
+
+  const state = await page.evaluate(() => {
+    window.__birdSongDebug.clearActiveRing();
+    window.advanceTime(220);
+    const leftCollapsed = document.querySelector('[data-role="left-panel"]')?.classList.contains('is-collapsed') ?? false;
+    const rightCollapsed = document.querySelector('[data-role="right-panel"]')?.classList.contains('is-collapsed') ?? false;
+
+    window.__birdSongDebug.spawnTerritoryMoment();
+    window.__birdSongDebug.hitPlayer(12);
+    window.advanceTime(110);
+
+    const damageEl = document.querySelector('[data-role="damage-indicator"]');
+    const damageVisible = damageEl ? !damageEl.classList.contains('is-hidden') : false;
+    const damageOpacity = damageEl ? Number(getComputedStyle(damageEl).opacity) : 0;
+    const dangerText = document.querySelector('[data-role="danger-label"]')?.textContent ?? '';
+    return {
+      leftCollapsed,
+      rightCollapsed,
+      damageVisible,
+      damageOpacity,
+      dangerText,
+      debug: window.__birdSongDebug.getState(),
+    };
+  });
+
+  expect(state.leftCollapsed).toBeTruthy();
+  expect(state.rightCollapsed).toBeTruthy();
+  expect(state.damageVisible).toBeTruthy();
+  expect(state.damageOpacity).toBeGreaterThan(0.1);
+  expect(state.dangerText).toContain('Hit from');
+  expect(state.debug.health).toBeLessThan(100);
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});

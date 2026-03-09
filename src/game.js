@@ -324,6 +324,8 @@ export class BirdGame {
       threatLevel: 0,
       damageFlashTimer: 0,
       recentHitTimer: 0,
+      damageDirectionAngle: 0,
+      damageDirectionTimer: 0,
       recentPulseTimer: 0,
       territoryTimer: 0,
       territoryActive: false,
@@ -336,6 +338,7 @@ export class BirdGame {
         composed: false,
         lastCollectedNote: null,
         discoveryTargetId: null,
+        windGatesPassed: 0,
       },
       tutorialUsage: {
         flap: 0,
@@ -1562,6 +1565,8 @@ export class BirdGame {
     this.state.threatLevel = 0;
     this.state.damageFlashTimer = 0;
     this.state.recentHitTimer = 0;
+    this.state.damageDirectionAngle = 0;
+    this.state.damageDirectionTimer = 0;
     this.state.recentPulseTimer = 0;
     this.state.territoryTimer = 0;
     this.state.territoryActive = false;
@@ -1696,8 +1701,8 @@ export class BirdGame {
     updateProjectilesSystem(this, delta);
   }
 
-  applyPlayerDamage(amount, source = 'attack') {
-    applyPlayerDamageSystem(this, amount, source);
+  applyPlayerDamage(amount, source = 'attack', sourcePosition = null) {
+    applyPlayerDamageSystem(this, amount, source, sourcePosition);
   }
 
   triggerPlayerDeath(source = 'ground') {

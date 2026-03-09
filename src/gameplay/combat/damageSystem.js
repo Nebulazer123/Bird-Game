@@ -1,32 +1,40 @@
-/**
- * @module damageSystem
- * Handles player health, death animation, respawning, and win animation.
- * Separating damage/respawn logic here keeps flightSystem focused on movement.
- */
 import { START_POSITION } from '../core/config.js';
 import { getStats } from '../flight/stats.js';
 
-/**
- * Deducts health from the player and sets danger timers for the HUD.
- * Ignored when god mode is active or the respawn shield is still ticking.
- * If health drops to zero, the death sequence is triggered.
- */
-export function applyPlayerDamage(game, amount, source = 'attack') {
+function normalizeAngle(value) {
+  let angle = value;
+  while (angle > Math.PI) angle -= Math.PI * 2;
+  while (angle < -Math.PI) angle += Math.PI * 2;
+  return angle;
+}
+
+function resolveDamageDirection(game, sourcePosition, source) {
+  if (sourcePosition && Number.isFinite(sourcePosition.x) && Number.isFinite(sourcePosition.z)) {
+    const dx = sourcePosition.x - game.bird.root.position.x;
+    const dz = sourcePosition.z - game.bird.root.position.z;
+    if (Math.abs(dx) > 0.001 || Math.abs(dz) > 0.001) {
+      const worldAngle = Math.atan2(dx, dz);
+      return normalizeAngle(worldAngle - game.bird.heading);
+    }
+  }
+  if (source === 'ground') return Math.PI;
+  return 0;
+}
+
+export function applyPlayerDamage(game, amount, source = 'attack', sourcePosition = null) {
   if (!Number.isFinite(amount) || amount <= 0) return;
   if (game.state.godMode || game.state.respawnShieldTimer > 0) return;
   game.state.health = Math.max(0, game.state.health - amount);
   game.state.damageFlashTimer = 0.45;
   game.state.recentHitTimer = 0.45;
+  game.state.damageDirectionAngle = resolveDamageDirection(game, sourcePosition, source);
+  game.state.damageDirectionTimer = 0.45;
   game.state.dangerWarning = source === 'ground' ? 'Ground too close' : 'Incoming threat';
   if (game.state.health <= 0) {
     triggerPlayerDeath(game, source);
   }
 }
 
-/**
- * Starts the death tumble animation. Clears all projectiles immediately so they
- * don't continue to deal damage during the animation.
- */
 export function triggerPlayerDeath(game, source = 'ground') {
   if (game.state.deathAnimationTimer > 0 || game.state.completed) return;
   const stats = getStats(game);
@@ -41,10 +49,6 @@ export function triggerPlayerDeath(game, source = 'ground') {
   game.enemyProjectiles = [];
 }
 
-/**
- * Tumbles the bird body during the death animation, then calls respawnPlayer
- * when the timer expires.
- */
 export function updateDeathAnimation(game, delta) {
   game.state.deathAnimationTimer = Math.max(0, game.state.deathAnimationTimer - delta);
   game.bird.root.rotation.z += delta * 7.8;
@@ -55,20 +59,12 @@ export function updateDeathAnimation(game, delta) {
   }
 }
 
-/**
- * Bobs the bird up and down during the win celebration animation.
- * The timer ticking to zero signals the game to show the finish overlay.
- */
 export function updateWinAnimation(game, delta) {
   game.state.winAnimationTimer = Math.max(0, game.state.winAnimationTimer - delta);
   game.bird.root.position.y += Math.sin(game.clock.elapsedTime * 12) * delta * 2.4;
   game.bird.root.rotation.z = Math.sin(game.clock.elapsedTime * 8) * 0.12;
 }
 
-/**
- * Teleports the bird back to the start position with full health and a brief
- * invincibility shield, clearing all in-flight projectiles.
- */
 export function respawnPlayer(game) {
   const stats = getStats(game);
   game.state.health = game.state.maxHealth;

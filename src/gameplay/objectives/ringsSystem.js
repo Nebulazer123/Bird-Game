@@ -16,6 +16,12 @@ import {
 
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
+const WIND_GATE_TONES = ['C4', 'E4', 'G4', 'A4', 'C5', 'D5', 'E5', 'G5'];
+const WIND_GATE_PHRASE_LENGTH = 4;
+
+function getWindGateTone(index) {
+  return WIND_GATE_TONES[index % WIND_GATE_TONES.length];
+}
 
 /**
  * Returns true if the bird's movement this frame crossed the active ring's plane
@@ -56,15 +62,42 @@ export function forceClearActiveRing(game) {
   ring.cleared = true;
   ring.removing = true;
   ring.captureTimer = 0.24;
+  game.state.activeRingIndex += 1;
+
+  if (game.features.mode === 'zen') {
+    game.state.zen.windGatesPassed += 1;
+    game.bird.boostCooldown = Math.max(0, game.bird.boostCooldown - 1.1);
+    game.state.windPulseCooldown = Math.max(0, game.state.windPulseCooldown - 0.9);
+    game.state.recentPulseTimer = Math.max(game.state.recentPulseTimer, 0.22);
+    game.playAudioCue('windGate');
+    game.playNoteCollect(getWindGateTone(game.state.zen.windGatesPassed - 1));
+    if (game.state.zen.windGatesPassed % WIND_GATE_PHRASE_LENGTH === 0) {
+      game.state.recentPulseTimer = Math.max(game.state.recentPulseTimer, 0.34);
+      game.playAudioCue('compose');
+    }
+
+    if (game.state.activeRingIndex >= game.state.totalRings) {
+      game.state.activeRingIndex = 0;
+      game.courseRings.forEach((courseRing) => {
+        courseRing.cleared = false;
+        courseRing.removing = false;
+        courseRing.captureTimer = 0;
+        courseRing.group.visible = true;
+        courseRing.group.scale.setScalar(1);
+        courseRing.group.position.copy(courseRing.basePosition);
+      });
+    }
+    return;
+  }
+
   game.state.ringsCleared += 1;
   game.state.score += 150;
-  game.state.activeRingIndex += 1;
   const featherCount = Math.floor(game.state.ringsCleared / FEATHER_RING_STEP);
   if (featherCount > game.state.feathersAwardedFromRings) {
     game.state.feathers += featherCount - game.state.feathersAwardedFromRings;
     game.state.feathersAwardedFromRings = featherCount;
   }
-  if (game.features.mode === 'challenge' && game.state.activeRingIndex >= game.state.totalRings) activateFinale(game);
+  if (game.state.activeRingIndex >= game.state.totalRings) activateFinale(game);
 }
 
 /**

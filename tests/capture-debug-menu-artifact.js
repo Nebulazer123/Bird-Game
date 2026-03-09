@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { chromium } from 'playwright';
+import { chromium } from '@playwright/test';
 
 const OUTPUT_DIR = path.resolve('output');
 const SCREENSHOT_PATH = path.join(OUTPUT_DIR, 'debug-menu-open-fixed.png');
