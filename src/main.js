@@ -67,11 +67,13 @@ app.innerHTML = `
         <p><strong data-role="health">100 / 100</strong> HP</p>
         <p data-role="aim">Mouse aim active</p>
         <p data-role="enemy">Calm air</p>
+        <p data-role="control-hint">Controller: connect to enable.</p>
       </article>
     </section>
 
     <section class="flight-overlay">
       <div class="threat-indicator is-hidden" data-role="threat-indicator" aria-hidden="true"></div>
+      <div class="damage-indicator is-hidden" data-role="damage-indicator" aria-hidden="true"></div>
       <div class="ground-warning is-hidden" data-role="ground-warning"></div>
 
       <div class="reticle-stack">
@@ -199,9 +201,11 @@ const game = new BirdGame({
   health: root.querySelector('[data-role="health"]'),
   aim: root.querySelector('[data-role="aim"]'),
   enemy: root.querySelector('[data-role="enemy"]'),
+  controlHint: root.querySelector('[data-role="control-hint"]'),
   dangerLabel: root.querySelector('[data-role="danger-label"]'),
   survivalWidget: root.querySelector('[data-role="survival-widget"]'),
   threatIndicator: root.querySelector('[data-role="threat-indicator"]'),
+  damageIndicator: root.querySelector('[data-role="damage-indicator"]'),
   groundWarning: root.querySelector('[data-role="ground-warning"]'),
   tutorialPrompt: root.querySelector('[data-role="tutorial-prompt"]'),
   reticle: root.querySelector('[data-role="reticle"]'),

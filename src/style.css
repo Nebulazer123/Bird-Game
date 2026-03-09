@@ -162,11 +162,17 @@ kbd {
   gap: 0.9rem;
   width: min(16rem, 28vw);
   padding: 8rem 1.15rem 1.15rem;
-  transition: opacity 150ms ease;
+  transition: opacity 150ms ease, transform 150ms ease;
 }
 
 .side-panel.is-muted {
   opacity: 0.3;
+}
+
+.side-panel.is-collapsed {
+  opacity: 0;
+  transform: translateY(0.9rem);
+  pointer-events: none;
 }
 
 .right-panel {
@@ -345,6 +351,23 @@ kbd {
   border-bottom: 2.1rem solid rgba(255, 141, 116, 0.82);
   transform-origin: center 8rem;
   filter: drop-shadow(0 0 1rem rgba(255, 141, 116, 0.25));
+}
+
+.damage-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6.6rem;
+  height: 6.6rem;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  opacity: 0;
+  background:
+    radial-gradient(circle, transparent 45%, rgba(255, 141, 116, 0.18) 58%, transparent 64%),
+    conic-gradient(from -90deg, transparent 0deg, rgba(255, 141, 116, 0.86) 24deg, transparent 48deg);
+  filter: drop-shadow(0 0 0.9rem rgba(255, 141, 116, 0.32));
+  mix-blend-mode: screen;
+  transition: opacity 90ms linear, transform 90ms linear;
 }
 
 .ground-warning,

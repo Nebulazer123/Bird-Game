@@ -2,6 +2,41 @@ import * as THREE from 'three';
 import { MPH_PER_SPEED } from '../core/config.js';
 
 const clamp = THREE.MathUtils.clamp;
+const radToDeg = THREE.MathUtils.radToDeg;
+
+function normalizeAngle(value) {
+  let angle = value;
+  while (angle > Math.PI) angle -= Math.PI * 2;
+  while (angle < -Math.PI) angle += Math.PI * 2;
+  return angle;
+}
+
+function describeDirection(angle) {
+  const normalized = normalizeAngle(angle);
+  const degrees = radToDeg(normalized);
+  const abs = Math.abs(degrees);
+  if (abs <= 32) return 'ahead';
+  if (abs >= 148) return 'behind';
+  return degrees > 0 ? 'right' : 'left';
+}
+
+function getControlHint(game) {
+  if (!game.gamepad.connected) {
+    return game.features.mode === 'zen'
+      ? 'Keyboard + mouse: W/A/S/D fly, F gust, Q Wind Pulse.'
+      : 'Keyboard + mouse: W/A/S/D fly, F gust, mouse to aim.';
+  }
+
+  const padLabel = game.gamepad.layoutLabel || 'Controller';
+  if (game.gamepad.profileSource === 'saved') {
+    return `${padLabel}: custom layout active.`;
+  }
+
+  if (game.features.mode === 'zen') {
+    return `${padLabel}: LS fly, RS look, RT pulse, RB gust.`;
+  }
+  return `${padLabel}: LS fly, RS aim, RT beak shot, RB gust.`;
+}
 
 function getZenObjective(game) {
   if (game.state.completed && game.state.zen.composed) {
@@ -14,14 +49,20 @@ function getZenObjective(game) {
   if (game.state.zen.notesCollected >= game.state.zen.notesTotal) {
     return {
       title: `Notes ${game.state.zen.notesCollected} / ${game.state.zen.notesTotal}`,
-      hint: 'Return to the Sun Nest and compose the valley song.',
+      hint: game.state.zen.windGatesPassed > 0
+        ? `Return to the Sun Nest and compose. Wind gates sung: ${game.state.zen.windGatesPassed}.`
+        : 'Return to the Sun Nest and compose the valley song.',
     };
   }
 
   const nextNote = game.zenNotes.find((note) => !note.collected);
   return {
     title: `Notes ${game.state.zen.notesCollected} / ${game.state.zen.notesTotal}`,
-    hint: nextNote ? `Drift toward ${nextNote.label}. Wind gates are optional.` : 'Follow the warm updrafts.',
+    hint: nextNote
+      ? game.state.zen.windGatesPassed > 0
+        ? `Drift toward ${nextNote.label}. Wind gates sung: ${game.state.zen.windGatesPassed}.`
+        : `Drift toward ${nextNote.label}. Wind gates are optional.`
+      : 'Follow the warm updrafts.',
   };
 }
 
@@ -89,9 +130,9 @@ export function updateHud(game) {
   game.state.dangerWarning = groundWarning
     ? 'Ground too close'
     : game.state.recentHitTimer > 0
-      ? 'Incoming threat'
+      ? `Hit from ${describeDirection(game.state.damageDirectionAngle)}`
       : threat.level > 0.55
-        ? threat.label
+        ? `${threat.label} from ${describeDirection(threat.angle)}`
         : '';
 
   game.ui.modeBadge.textContent = game.features.mode === 'zen' ? 'Zen Soarer' : 'Challenge Flight';
@@ -103,8 +144,13 @@ export function updateHud(game) {
   game.ui.skills.textContent = String(game.state.skillPoints);
   game.ui.speed.textContent = `${Math.round(game.bird.speed * MPH_PER_SPEED)} mph`;
   game.ui.health.textContent = `${Math.round(game.state.health)} / ${game.state.maxHealth}`;
-  game.ui.enemy.textContent = threat.label;
-  game.ui.aim.textContent = game.gamepad.connected ? 'Controller aim active' : 'Mouse aim active';
+  game.ui.enemy.textContent = threat.level > 0.2 ? `${threat.label} (${describeDirection(threat.angle)})` : threat.label;
+  game.ui.aim.textContent = game.gamepad.connected
+    ? game.features.mode === 'zen'
+      ? 'Right stick look active'
+      : 'Right stick aim active'
+    : 'Mouse aim active';
+  game.ui.controlHint.textContent = getControlHint(game);
   game.ui.dangerLabel.textContent = game.state.dangerWarning || 'Clear sky';
   game.ui.tutorialPrompt.textContent = game.state.tutorialPrompt || '';
 
@@ -117,6 +163,17 @@ export function updateHud(game) {
   game.ui.noteCard.classList.toggle('is-hidden', game.features.mode !== 'zen');
   game.ui.ringCard.classList.toggle('is-hidden', game.features.mode === 'zen');
   game.ui.skillCard.classList.toggle('is-hidden', game.features.mode === 'zen');
+  const calmZenFlight = game.features.mode === 'zen'
+    && !game.state.awaitingTakeoff
+    && !game.state.paused
+    && !game.state.skillMenuOpen
+    && !game.state.completed
+    && !groundWarning
+    && game.state.recentHitTimer <= 0
+    && threat.level < 0.35
+    && !game.state.territoryActive;
+  game.ui.leftPanel.classList.toggle('is-collapsed', calmZenFlight);
+  game.ui.rightPanel.classList.toggle('is-collapsed', calmZenFlight);
 
   game.ui.boostFill.style.transform = `scaleX(${clamp(boostReady, 0, 1)})`;
   game.ui.fireFill.style.transform = `scaleX(${clamp(fireReady, 0, 1)})`;
@@ -129,6 +186,10 @@ export function updateHud(game) {
   game.ui.threatIndicator.style.opacity = `${clamp(threat.level, 0, 1)}`;
   game.ui.threatIndicator.style.transform = `translateX(-50%) rotate(${threat.angle}rad) scale(${0.8 + threat.level * 0.35})`;
   game.ui.threatIndicator.classList.toggle('is-hidden', threat.level <= 0.08);
+  const damageStrength = clamp(game.state.damageDirectionTimer / 0.45, 0, 1);
+  game.ui.damageIndicator.classList.toggle('is-hidden', damageStrength <= 0.02);
+  game.ui.damageIndicator.style.opacity = `${damageStrength.toFixed(3)}`;
+  game.ui.damageIndicator.style.transform = `translate(-50%, -50%) rotate(${game.state.damageDirectionAngle}rad) scale(${(1 + (1 - damageStrength) * 0.08).toFixed(3)})`;
   game.ui.groundWarning.classList.toggle('is-hidden', !groundWarning);
   game.ui.groundWarning.textContent = groundWarning ? `Low clearance: ${Math.max(0, game.state.lastGroundDistance).toFixed(1)}m` : '';
 

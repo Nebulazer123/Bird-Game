@@ -99,6 +99,7 @@ export function installDebugHooks(game) {
       skillPoints: game.state.skillPoints,
       notesCollected: game.state.zen.notesCollected,
       notesTotal: game.state.zen.notesTotal,
+      windGatesPassed: game.state.zen.windGatesPassed,
     },
     combat: {
       health: Number(game.state.health.toFixed(1)),
@@ -124,6 +125,7 @@ export function installDebugHooks(game) {
     zen: {
       composed: game.state.zen.composed,
       nextNote: game.state.zen.discoveryTargetId,
+      windGatesPassed: game.state.zen.windGatesPassed,
     },
     finale: {
       active: game.state.finaleActive,
@@ -159,6 +161,7 @@ export function getDebugState(game) {
     zenNotesCollected: game.state.zen.notesCollected,
     zenNotesTotal: game.state.zen.notesTotal,
     zenComposed: game.state.zen.composed,
+    zenWindGatesPassed: game.state.zen.windGatesPassed,
     completed: game.state.completed,
     shadowMapEnabled: game.renderer.shadowMap.enabled,
     lastGroundDistance: game.state.lastGroundDistance,
@@ -213,7 +216,9 @@ export function getDebugState(game) {
     gamepad: {
       connected: game.gamepad.connected,
       id: game.gamepad.id,
+      layoutLabel: game.gamepad.layoutLabel,
       mapping: game.gamepad.mapping,
+      profileSource: game.gamepad.profileSource,
       axes: game.gamepad.axes,
       buttons: game.gamepad.buttons.slice(0, 8),
       normalized: game.gamepad.inputState,

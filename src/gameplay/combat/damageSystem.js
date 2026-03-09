@@ -1,12 +1,34 @@
 import { START_POSITION } from '../core/config.js';
 import { getStats } from '../flight/stats.js';
 
-export function applyPlayerDamage(game, amount, source = 'attack') {
+function normalizeAngle(value) {
+  let angle = value;
+  while (angle > Math.PI) angle -= Math.PI * 2;
+  while (angle < -Math.PI) angle += Math.PI * 2;
+  return angle;
+}
+
+function resolveDamageDirection(game, sourcePosition, source) {
+  if (sourcePosition && Number.isFinite(sourcePosition.x) && Number.isFinite(sourcePosition.z)) {
+    const dx = sourcePosition.x - game.bird.root.position.x;
+    const dz = sourcePosition.z - game.bird.root.position.z;
+    if (Math.abs(dx) > 0.001 || Math.abs(dz) > 0.001) {
+      const worldAngle = Math.atan2(dx, dz);
+      return normalizeAngle(worldAngle - game.bird.heading);
+    }
+  }
+  if (source === 'ground') return Math.PI;
+  return 0;
+}
+
+export function applyPlayerDamage(game, amount, source = 'attack', sourcePosition = null) {
   if (!Number.isFinite(amount) || amount <= 0) return;
   if (game.state.godMode || game.state.respawnShieldTimer > 0) return;
   game.state.health = Math.max(0, game.state.health - amount);
   game.state.damageFlashTimer = 0.45;
   game.state.recentHitTimer = 0.45;
+  game.state.damageDirectionAngle = resolveDamageDirection(game, sourcePosition, source);
+  game.state.damageDirectionTimer = 0.45;
   game.state.dangerWarning = source === 'ground' ? 'Ground too close' : 'Incoming threat';
   if (game.state.health <= 0) {
     triggerPlayerDeath(game, source);

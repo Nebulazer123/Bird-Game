@@ -113,6 +113,7 @@ export function resetZenProgress(game) {
   game.state.zen.composed = false;
   game.state.zen.lastCollectedNote = null;
   game.state.zen.discoveryTargetId = null;
+  game.state.zen.windGatesPassed = 0;
   Object.keys(game.state.zen.notesById).forEach((key) => {
     delete game.state.zen.notesById[key];
   });

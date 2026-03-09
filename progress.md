@@ -47,3 +47,13 @@ Original prompt: no no no not mouth movement, i meant MOUSE movement. lik ehe fa
 - Polished the HUD and overlays toward a more human/mobile-game tone, and improved mobile layout behavior in `src/style.css`.
 - Added `tests/capture-graphics-showcase-artifact.js`, script `corepack pnpm artifact:graphics-showcase`, and Playwright coverage for showcase-mode asset visibility.
 - Verification complete: `corepack pnpm build`, `corepack pnpm test` (7/7), and `corepack pnpm artifact:graphics-showcase` all pass. Artifact JSON reports `"accepted": true`.
+
+## Zen-first polish pass
+
+- Reinforced Zen-first UX in HUD flow: stronger directional warning language, directional damage indicator, and calmer auto-collapsing side panels during low-risk Zen flight.
+- Improved controller support defaults by adding layout detection, automatic safe remap selection per device mapping, and clearer in-HUD controller guidance text.
+- Upgraded temporary audio from simple sine placeholders to a richer procedural layer (wind ambience, flap/boost/warning/territory cues, optional wind-gate cue, compose chime, and harmonic note pickup tones).
+- Expanded Zen optional gate behavior so wind gates now contribute a musical loop (`windGatesPassed` tracking + periodic phrase reinforcement) without reintroducing Challenge-first progression.
+- Extended debug/readability state output and Playwright coverage with two additional Zen tests:
+  - optional wind-gate loop behavior
+  - directional hit feedback + calm-flight panel declutter checks

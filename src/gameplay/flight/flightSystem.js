@@ -15,6 +15,7 @@ export function updateCooldowns(game, delta) {
   game.state.respawnShieldTimer = Math.max(0, game.state.respawnShieldTimer - delta);
   game.state.damageFlashTimer = Math.max(0, game.state.damageFlashTimer - delta);
   game.state.recentHitTimer = Math.max(0, game.state.recentHitTimer - delta);
+  game.state.damageDirectionTimer = Math.max(0, game.state.damageDirectionTimer - delta);
   game.state.recentPulseTimer = Math.max(0, game.state.recentPulseTimer - delta);
   game.state.windPulseTimer = Math.max(0, game.state.windPulseTimer - delta);
   game.state.windPulseCooldown = Math.max(0, game.state.windPulseCooldown - delta);

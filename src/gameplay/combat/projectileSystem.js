@@ -123,7 +123,7 @@ export function updateProjectiles(game, delta) {
       game.scene.remove(shot.mesh);
       game.state.recentHitTimer = 0.3;
       game.state.damageFlashTimer = 0.4;
-      game.applyPlayerDamage(shot.damage, 'attack');
+      game.applyPlayerDamage(shot.damage, 'attack', shot.position);
       return;
     }
 
