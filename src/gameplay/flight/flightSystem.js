@@ -46,6 +46,15 @@ export function updateBird(game, delta) {
     return;
   }
 
+  if (game.state.freeCameraMode) {
+    game.bird.speed = lerp(game.bird.speed, 0, smoothFactor(8, delta));
+    game.bird.verticalVelocity = lerp(game.bird.verticalVelocity, 0, smoothFactor(8, delta));
+    game.bird.bank = lerp(game.bird.bank, 0, smoothFactor(8, delta));
+    game.bird.lastFlap = false;
+    animateBird(game, delta);
+    return;
+  }
+
   if (game.state.awaitingTakeoff) {
     game.state.spawnHoverClock += delta;
     game.bird.speed = lerp(game.bird.speed, 0, smoothFactor(6, delta));
@@ -80,10 +89,8 @@ export function updateBird(game, delta) {
   }
 
   if (input.flap && !game.bird.lastFlap && game.bird.flapCooldown <= 0) {
-    game.bird.verticalVelocity += stats.flapImpulse;
-    game.bird.flapCooldown = stats.flapCooldown;
     game.playAudioCue('flap');
-    game.state.tutorialUsage.flap += 1;
+    game.bird.flapCooldown = stats.flapCooldown;
   }
   game.bird.lastFlap = input.flap;
 
@@ -111,6 +118,11 @@ export function updateBird(game, delta) {
     game.bird.verticalVelocity += stats.dashLift * delta;
   }
 
+  const autoFlapLift = stats.gravity;
+  const directionalLift = driveInput === 0
+    ? game.mouseAim.y * 7.5
+    : game.mouseAim.y * driveInput * 10.5;
+  game.bird.verticalVelocity += (autoFlapLift + directionalLift) * delta;
   game.bird.verticalVelocity -= stats.gravity * delta;
   game.bird.verticalVelocity *= 1 - Math.min(0.95, stats.verticalDrag * delta * 0.38);
   game.bird.verticalVelocity = clamp(game.bird.verticalVelocity, -stats.maxDrop, stats.maxClimb);
@@ -160,7 +172,7 @@ export function resolveGround(game, stats) {
 
 export function animateBird(game, delta) {
   game.bird.flapCycle += delta * (5.3 + clamp(game.bird.speed / 10, 1.5, 4.5));
-  const flap = Math.sin(game.bird.flapCycle) * (game.bird.lastFlap ? 0.9 : 0.52);
+  const flap = Math.sin(game.bird.flapCycle) * 0.88;
   const tailLift = clamp(-game.bird.verticalVelocity / 20, -0.18, 0.28);
 
   game.bird.leftWingPivot.rotation.z = -0.35 + flap * 0.9 + game.bird.bank * 0.2;
@@ -170,7 +182,7 @@ export function animateBird(game, delta) {
 
   if (game.bird.mixer) {
     const flightSpeed = clamp(Math.abs(game.bird.speed) / 18, 0.6, 2.2);
-    const flapBoost = game.bird.lastFlap ? 0.35 : 0;
+    const flapBoost = 0.24;
     game.bird.mixer.update(delta * (flightSpeed + flapBoost));
   }
 }

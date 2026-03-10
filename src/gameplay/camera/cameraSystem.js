@@ -4,6 +4,28 @@ import { forwardFromAngles, smoothFactor } from '../core/math.js';
 const clamp = THREE.MathUtils.clamp;
 
 export function updateCamera(game, delta) {
+
+  if (game.state.freeCameraMode) {
+    const lookSpeed = 1.6;
+    game.state.freeCameraHeading -= game.mouseAim.x * lookSpeed * delta;
+    game.state.freeCameraPitch = clamp(game.state.freeCameraPitch + game.mouseAim.y * lookSpeed * delta, -1.3, 1.3);
+
+    const moveSpeed = (game.keys.has('ShiftLeft') || game.keys.has('ShiftRight') ? 42 : 24) * delta;
+    const forward = forwardFromAngles(game.state.freeCameraHeading, game.state.freeCameraPitch, game.forwardVector);
+    const right = game.tmpVector2.set(Math.cos(game.state.freeCameraHeading), 0, -Math.sin(game.state.freeCameraHeading));
+
+    if (game.keys.has('KeyW')) game.camera.position.addScaledVector(forward, moveSpeed);
+    if (game.keys.has('KeyS')) game.camera.position.addScaledVector(forward, -moveSpeed);
+    if (game.keys.has('KeyA')) game.camera.position.addScaledVector(right, -moveSpeed);
+    if (game.keys.has('KeyD')) game.camera.position.addScaledVector(right, moveSpeed);
+    if (game.keys.has('KeyE')) game.camera.position.y += moveSpeed;
+    if (game.keys.has('KeyQ')) game.camera.position.y -= moveSpeed;
+
+    game.cameraTarget.copy(game.camera.position).addScaledVector(forward, 10);
+    game.camera.lookAt(game.cameraTarget);
+    return;
+  }
+
   if (game.state.showcaseMode) {
     const time = game.clock.elapsedTime;
     const radius = 20;

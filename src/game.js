@@ -287,6 +287,9 @@ export class BirdGame {
       paused: false,
       debugOpen: false,
       showcaseMode: false,
+      freeCameraMode: false,
+      freeCameraHeading: 0,
+      freeCameraPitch: 0,
       skillMenuOpen: false,
       godMode: false,
       awaitingTakeoff: true,
@@ -1613,12 +1616,33 @@ export class BirdGame {
     return true;
   }
 
+
+  toggleFreeCameraMode(forceValue) {
+    const nextValue = typeof forceValue === 'boolean' ? forceValue : !this.state.freeCameraMode;
+    this.state.freeCameraMode = nextValue;
+
+    if (nextValue) {
+      this.state.showcaseMode = false;
+      const direction = new THREE.Vector3();
+      this.camera.getWorldDirection(direction);
+      this.state.freeCameraHeading = Math.atan2(direction.x, direction.z);
+      this.state.freeCameraPitch = Math.asin(THREE.MathUtils.clamp(direction.y, -1, 1));
+      this.mouseAim.targetX = 0;
+      this.mouseAim.targetY = 0;
+      this.mouseAim.x = 0;
+      this.mouseAim.y = 0;
+    }
+
+    this.updateHud();
+  }
+
   // Debug-only showcase mode keeps both bird models framed for artifact capture.
   toggleShowcaseMode(forceValue) {
     const nextValue = typeof forceValue === 'boolean' ? forceValue : !this.state.showcaseMode;
     this.state.showcaseMode = nextValue;
 
     if (nextValue) {
+      this.state.freeCameraMode = false;
       this.state.paused = false;
       this.state.skillMenuOpen = false;
       this.mouseAim.targetX = 0;

@@ -62,6 +62,12 @@ export function bindUi(game) {
     });
   }
 
+  if (game.ui.debugFreeCameraToggle) {
+    game.ui.debugFreeCameraToggle.addEventListener('click', () => {
+      game.toggleFreeCameraMode();
+    });
+  }
+
   if (game.ui.debugAddSkill) {
     game.ui.debugAddSkill.addEventListener('click', () => {
       game.giveSkillPoint(1);

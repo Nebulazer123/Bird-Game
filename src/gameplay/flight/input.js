@@ -11,7 +11,7 @@ export function getInputState(game) {
     return game.virtualInput;
   }
 
-  if (game.state.showcaseMode) {
+  if (game.state.showcaseMode || game.state.freeCameraMode) {
     return game.emptyInput();
   }
 
@@ -20,7 +20,7 @@ export function getInputState(game) {
     brake: game.keys.has('KeyS') || gamepad.moveY > 0.35,
     left: game.keys.has('KeyD') || gamepad.moveX > 0.35,
     right: game.keys.has('KeyA') || gamepad.moveX < -0.35,
-    flap: game.keys.has('Space') || gamepad.flap,
+    flap: gamepad.flap,
     boost: game.keys.has('KeyF') || gamepad.boost,
     shoot: gamepad.shoot,
     pulse: game.keys.has('KeyQ') || gamepad.pulse,
@@ -29,7 +29,7 @@ export function getInputState(game) {
 }
 
 export function isMovementKey(code) {
-  return ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyF', 'KeyQ'].includes(code);
+  return ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyQ'].includes(code);
 }
 
 export function releaseTakeoffLock(game) {
