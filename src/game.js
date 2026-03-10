@@ -186,6 +186,7 @@ export class BirdGame {
     this.tmpVector2 = new THREE.Vector3();
     this.tmpVector3 = new THREE.Vector3();
     this.tmpColor = new THREE.Color();
+    this.worldMapRadius = WORLD_LIMIT;
     this.forwardVector = new THREE.Vector3();
     this.rightVector = new THREE.Vector3();
     this.previousBirdPosition = START_POSITION.clone();
@@ -465,6 +466,7 @@ export class BirdGame {
     this.createTrees();
     this.createRocks();
     this.createFoliage();
+    this.createBoundaryMountains();
     this.createClouds();
     this.createNest();
     this.createCliffSupports();
@@ -583,6 +585,7 @@ export class BirdGame {
     this.createTrees();
     this.createRocks();
     this.createFoliage();
+    this.createBoundaryMountains();
     this.createClouds();
     this.createCliffSupports();
   }
@@ -898,6 +901,16 @@ export class BirdGame {
         this.tmpColor.lerp(new THREE.Color(0x887967), 0.38);
       }
 
+      const valleyLine = Math.exp(-Math.pow(riverDistance / 34, 2));
+      if (valleyLine > 0.52) {
+        this.tmpColor.lerp(new THREE.Color(0xc4b589), 0.28 * valleyLine);
+      }
+
+      if (Math.abs(x) > 420 || Math.abs(z) > 420) {
+        const edgeFade = clamp((Math.max(Math.abs(x), Math.abs(z)) - 420) / 120, 0, 1);
+        this.tmpColor.lerp(new THREE.Color(0x9d8e6a), edgeFade * 0.42);
+      }
+
       colors[index * 3] = this.tmpColor.r;
       colors[index * 3 + 1] = this.tmpColor.g;
       colors[index * 3 + 2] = this.tmpColor.b;
@@ -919,6 +932,34 @@ export class BirdGame {
 
   heightAt(x, z) {
     return authoredHeightAt(x, z);
+  }
+
+  createBoundaryMountains() {
+    const count = 28;
+    const baseRadius = this.worldMapRadius + 35;
+
+    for (let index = 0; index < count; index += 1) {
+      const angle = (index / count) * Math.PI * 2;
+      const jitter = seed(index * 37.1 + 9.4) - 0.5;
+      const radius = baseRadius + jitter * 34;
+      const height = 58 + seed(index * 14.7 + 2.1) * 62;
+      const width = 30 + seed(index * 23.8 + 5.3) * 26;
+
+      const mountain = new THREE.Mesh(
+        new THREE.ConeGeometry(width, height, 8),
+        new THREE.MeshStandardMaterial({
+          color: new THREE.Color().setHSL(0.12, 0.24, 0.34 + seed(index * 12.3) * 0.08),
+          roughness: 0.95,
+          metalness: 0,
+        }),
+      );
+      mountain.position.set(Math.cos(angle) * radius, height * 0.4 - 4, Math.sin(angle) * radius);
+      mountain.rotation.y = angle + jitter * 0.4;
+      mountain.castShadow = true;
+      mountain.receiveShadow = true;
+      this.scene.add(mountain);
+      this.decor.push(mountain);
+    }
   }
 
   createBird() {
@@ -1087,6 +1128,15 @@ export class BirdGame {
     });
   }
 
+  templateMatchesName(template, pattern) {
+    let matched = false;
+    template.traverse((node) => {
+      if (matched || !node.name) return;
+      if (pattern.test(node.name)) matched = true;
+    });
+    return matched;
+  }
+
   createTrees() {
     if (this.models.quaternius.trees.length > 0 || this.models.quaternius.deadTrees.length > 0) {
       const mixed = [
@@ -1245,10 +1295,33 @@ export class BirdGame {
 
   createFoliage() {
     if (this.models.quaternius.foliage.length > 0) {
-      this.spawnClusteredProps(VALLEY_LAYOUT.meadowPatches, this.models.quaternius.foliage, {
-        scaleMin: 1.2,
-        scaleMax: 2.8,
-      });
+      const grassTemplates = this.models.quaternius.foliage.filter((template) => this.templateMatchesName(template, /Grass_/i));
+      const accentTemplates = this.models.quaternius.foliage.filter((template) => !this.templateMatchesName(template, /Grass_/i));
+      const grassPatches = VALLEY_LAYOUT.meadowPatches.map((patch) => ({
+        ...patch,
+        count: Math.max(18, Math.round(patch.count * 2.2)),
+        spreadX: patch.spreadX * 1.2,
+        spreadZ: patch.spreadZ * 1.2,
+      }));
+
+      if (grassTemplates.length > 0) {
+        this.spawnClusteredProps(grassPatches, grassTemplates, {
+          scaleMin: 1.5,
+          scaleMax: 3.1,
+          yLift: 0.15,
+        });
+      }
+
+      this.spawnClusteredProps(
+        VALLEY_LAYOUT.meadowPatches,
+        accentTemplates.length > 0 ? accentTemplates : this.models.quaternius.foliage,
+        {
+          scaleMin: 1.1,
+          scaleMax: 2.4,
+          yLift: 0.08,
+        },
+      );
+
       if (this.models.kenney.foliage.length > 0) {
         this.spawnClusteredProps(
           VALLEY_LAYOUT.meadowPatches.map((patch) => ({ ...patch, count: Math.max(4, Math.round(patch.count * 0.2)) })),

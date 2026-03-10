@@ -57,3 +57,22 @@ Original prompt: no no no not mouth movement, i meant MOUSE movement. lik ehe fa
 - Extended debug/readability state output and Playwright coverage with two additional Zen tests:
   - optional wind-gate loop behavior
   - directional hit feedback + calm-flight panel declutter checks
+
+## Branch consolidation (main)
+
+- Fast-forwarded `main` to the consolidated Codex snapshot line (`codex/merge-everything` → `codex/snapshots/...`).
+- Ported the PR1-only HUD minimap + boundary landmark terrain polish onto the consolidated codebase:
+  - Added a minimap card + markers (player/target/nest) in `src/main.js` + `src/style.css`.
+  - Added minimap marker updates in `src/gameplay/ui/hudSystem.js`.
+  - Added `worldMapRadius`, boundary mountain props, and extra terrain tinting in `src/game.js`.
+- Added `.codex/` to `.gitignore` to prevent Codex workspace artifacts from showing as untracked.
+- Verification: `corepack pnpm build` + `corepack pnpm test` (13/13) pass.
+
+## Environment art restore
+
+- Confirmed the richer world-art wiring still lives in the consolidated Codex codepath on `main`/`codex/merge-everything`: `ASSET_URLS.quaternius`, `loadQuaterniusModels()`, and the Quaternius-first tree/rock/foliage spawning in `src/game.js`.
+- Root cause was local asset loss, not missing gameplay code: `public/assets/models/quaternius/` was absent even though the scene still requested those files.
+- Restored the Quaternius local environment pack into `public/assets/models/quaternius/` from the already-downloaded local extract under `output/tmp-assets/quaternius_stylized_nature_megakit_standard/`.
+- Fixed `scripts/fetch_assets.ps1` so reruns also restore the Quaternius `.png` texture files and recognize the alternate extracted folder name already present on disk.
+- Added a Playwright regression test that waits for the Quaternius trees/rocks/foliage to load into the live scene (`tests/game.spec.js`).
+- Verification: `corepack pnpm build`, `corepack pnpm test` (14/14), and `corepack pnpm artifact:graphics-showcase` all pass. Live browser sanity check shows the restored stylized tree art rendering in-scene.

@@ -274,6 +274,23 @@ test('showcase mode exposes loaded player and enemy graphics for artifact captur
   expect(pageErrors).toEqual([]);
 });
 
+test('local quaternius valley art pack loads and populates world decor', async ({ page }) => {
+  const { pageErrors, consoleErrors } = await boot(page, 'challenge');
+
+  await page.waitForFunction(() => {
+    const valley = window.__birdSongDebug.getValleyStatus();
+    return valley.quaterniusTrees > 0 && valley.quaterniusRocks > 0 && valley.quaterniusFoliage > 0;
+  });
+
+  const valley = await page.evaluate(() => window.__birdSongDebug.getValleyStatus());
+  expect(valley.quaterniusTrees).toBeGreaterThan(0);
+  expect(valley.quaterniusRocks).toBeGreaterThan(0);
+  expect(valley.quaterniusFoliage).toBeGreaterThan(0);
+  expect(valley.decorCount).toBeGreaterThan(20);
+  expect(consoleErrors).toEqual([]);
+  expect(pageErrors).toEqual([]);
+});
+
 test('zen mode collects a note, updates the objective chip, and composes at the nest', async ({ page }) => {
   const { pageErrors, consoleErrors } = await boot(page, 'zen');
 

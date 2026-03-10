@@ -2,6 +2,7 @@ node_modules/
 dist/
 test-results/
 output/
+.codex/
 .codex-vite.pid
 playwright-report/
 .DS_Store

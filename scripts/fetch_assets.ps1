@@ -89,10 +89,14 @@ Write-Host "== Stylized Nature MegaKit (Quaternius, CC0) =="
 $quaterniusDir = Join-Path $projectRoot "public/assets/models/quaternius"
 $quaterniusZip = Join-Path $projectRoot "output/tmp-assets/quaternius_stylized-nature-megakit.zip"
 $quaterniusExtract = Join-Path $projectRoot "output/tmp-assets/quaternius_stylized-nature-megakit"
+$quaterniusExtractLegacy = Join-Path $projectRoot "output/tmp-assets/quaternius_stylized_nature_megakit_standard"
 
 Download-File "https://quaternius.com/packs/Ultimate%20Stylized%20Nature%20Pack.zip" $quaterniusZip
 
-if (!(Test-Path $quaterniusExtract)) {
+if ((Test-Path $quaterniusExtractLegacy) -and !(Test-Path $quaterniusExtract)) {
+  $quaterniusExtract = $quaterniusExtractLegacy
+  Write-Host "OK  exists   $quaterniusExtract"
+} elseif (!(Test-Path $quaterniusExtract)) {
   Ensure-Dir (Split-Path -Parent $quaterniusExtract)
   Expand-Archive -Force $quaterniusZip $quaterniusExtract
   Write-Host "OK  extracted $quaterniusExtract"
@@ -136,6 +140,7 @@ $quaterniusWant = @(
 
 $srcGltfDir = Get-ChildItem -Path $quaterniusExtract -Recurse -Directory | Where-Object { $_.Name -match "GLTF|gltf|glTF" } | Select-Object -First 1
 $srcGltfPath = if ($srcGltfDir) { $srcGltfDir.FullName } else { $quaterniusExtract }
+$srcTextureDir = Get-ChildItem -Path $quaterniusExtract -Recurse -Directory | Where-Object { $_.Name -eq "Textures" } | Select-Object -First 1
 
 foreach ($baseName in $quaterniusWant) {
   $found = Get-ChildItem -Path $srcGltfPath -Recurse -Filter "$baseName.gltf" | Select-Object -First 1
@@ -151,6 +156,14 @@ foreach ($baseName in $quaterniusWant) {
   } else {
     Write-Host "SKIP missing $baseName.gltf in Quaternius pack"
   }
+}
+
+if ($srcTextureDir) {
+  Get-ChildItem -Path $srcTextureDir.FullName -File -Filter *.png | ForEach-Object {
+    Copy-If-Exists $_.FullName (Join-Path $quaterniusDir $_.Name)
+  }
+} else {
+  Write-Host "SKIP missing Quaternius texture directory"
 }
 
 Write-Host ""
