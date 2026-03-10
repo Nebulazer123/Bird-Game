@@ -7,6 +7,7 @@ export function updateDebugPanel(game) {
     autopilot: game.state.autopilot,
     godMode: game.state.godMode,
     showcaseMode: game.state.showcaseMode,
+    freeCameraMode: game.state.freeCameraMode,
     assets: {
       playerModel: Boolean(game.bird.model),
       enemyModel: game.enemies.some((enemy) => Boolean(enemy.model)),
@@ -61,6 +62,9 @@ export function updateDebugPanel(game) {
   game.ui.debugGodMode.classList.toggle('is-active', game.state.godMode);
   if (game.ui.debugShowcaseToggle) {
     game.ui.debugShowcaseToggle.classList.toggle('is-active', game.state.showcaseMode);
+  }
+  if (game.ui.debugFreeCameraToggle) {
+    game.ui.debugFreeCameraToggle.classList.toggle('is-active', game.state.freeCameraMode);
   }
   if (game.ui.debugTerritoryButton) {
     game.ui.debugTerritoryButton.classList.toggle('is-active', game.state.territoryActive);

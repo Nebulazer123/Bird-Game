@@ -182,6 +182,7 @@ app.innerHTML = `
         <button type="button" data-role="debug-reset">Restart</button>
         <button type="button" data-role="debug-autopilot">Auto Fly</button>
         <button type="button" data-role="debug-showcase">Showcase</button>
+        <button type="button" data-role="debug-free-camera">Free Camera</button>
         <button type="button" data-role="debug-respawn-enemy">Spawn Enemy</button>
         <button type="button" data-role="debug-territory">Territory</button>
         <button type="button" data-role="debug-god-mode">God Mode</button>
@@ -243,6 +244,7 @@ const game = new BirdGame({
   debugResetMission: root.querySelector('[data-role="debug-reset"]'),
   debugToggleAutopilot: root.querySelector('[data-role="debug-autopilot"]'),
   debugShowcaseToggle: root.querySelector('[data-role="debug-showcase"]'),
+  debugFreeCameraToggle: root.querySelector('[data-role="debug-free-camera"]'),
   debugRespawnEnemy: root.querySelector('[data-role="debug-respawn-enemy"]'),
   debugTerritoryButton: root.querySelector('[data-role="debug-territory"]'),
   debugGodMode: root.querySelector('[data-role="debug-god-mode"]'),

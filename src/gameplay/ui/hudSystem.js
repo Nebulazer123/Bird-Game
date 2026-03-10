@@ -89,7 +89,6 @@ function getTutorialPrompt(game) {
   if (game.state.awaitingTakeoff) return 'Press W or push the left stick forward to start gliding.';
   if (game.state.tutorialUsage.boost < 2 && game.bird.boostCooldown <= 0) return 'Press F or the right trigger for a gust burst.';
   if (game.features.mode === 'zen' && game.state.tutorialUsage.pulse < 2) return 'Click or tap the fire button to send a Wind Pulse.';
-  if (game.state.tutorialUsage.flap < 2) return 'Tap Space when you need lift near the ground.';
   return '';
 }
 
